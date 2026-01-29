@@ -1,7 +1,7 @@
 # 🛑 READ THIS FIRST (For Future AI Agents)
 
 **Project Status:** GOLDEN STATE (Stable)
-**Current Commit:** `54e123e` ("Golden State: Fixed red pill toast, instant locking, and iframe visibility")
+**Current Commit:** `a7d4fd0` ("Fixed frozen input on whitelist, enforced strict lock completion")
 **GitHub Repo:** https://github.com/mikmaneggahommie/The-Procastnation-Extension
 
 ## ⚠️ THE GOLDEN RULE
@@ -9,7 +9,13 @@
 This user has experienced significant frustration with "fixing one thing and breaking another."
 **DO NOT** make experimental changes without first securing the current state.
 
-## 🛠 THE PROTOCOL (Mandatory)
+## � STRICT LOCK POLICY (Crucial)
+
+- **Persistent Challenge**: If a user is in the "Typing Challenge", they **MUST** finish it to unlock the site.
+- **Even on Whitelist**: If they whitelist the site mid-challenge, the overlay must **STAY** until they finish typing. Do NOT auto-abort the challenge.
+- **Input Focus**: The input box must explicitly regain focus after popup interactions (Fixed in `a7d4fd0`).
+
+## �🛠 THE PROTOCOL (Mandatory)
 
 This project uses a strict Git Safety Net. You must follow this workflow:
 

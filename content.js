@@ -456,6 +456,33 @@ class CureVault {
                 }
             }
 
+            // FIX 118: Clear Sticky Unlock on Strict Lock Enable.
+            // If the user enables Strict Lock (regardless of previous state), we must clear 
+            // any lingering unlock state to ensure limits are enforced immediately.
+            // This fixes the "Re-lock Bypass" where toggling the switch allowed a free pass.
+            if (newStrictLock) {
+                this.stickyUnlocked = false;
+                sessionStorage.removeItem(`cure_sticky_unlocked_${window.location.hostname}`);
+                sessionStorage.removeItem('cure_success_page_active');
+            }
+
+            // FIX 119: Timer Mode Restoration (Reward -> Session).
+            // If the user disables Strict Lock or Whitelists the site while in Reward Mode,
+            // we must immediately revert the timer to count UP from the total time spent.
+            // (Total Time = Pre-Lock Time + Time Spent in Reward).
+            if ((oldStrictLock && !newStrictLock) || (!oldWhitelisted && newWhitelisted)) {
+                if (this.mode === 'down') {
+                    const rewardSpent = Math.max(0, (this.originalRewardSeconds || 0) - this.activeSeconds);
+                    this.activeSeconds = (this.sessionBaseSeconds || 0) + rewardSpent;
+                    this.mode = 'up';
+                    this.sessionBaseSeconds = 0;
+                    this.originalRewardSeconds = 0;
+                }
+                // FIX 123: Always save timer when strict lock is disabled (even in 'up' mode)
+                // This ensures the current time is persisted before overlay removal or page reload.
+                this.saveTimer();
+            }
+
             // SYNC UI REFRESH: authoritative flicker-free update
             this.forceRefreshUI();
 
@@ -463,6 +490,26 @@ class CureVault {
             if (this.timerInterval) {
                 clearInterval(this.timerInterval);
                 this.timerInterval = null;
+            }
+
+            // FIX 125: Nuclear Force Lock on Strict Lock Enable
+            // If we just enabled Strict Lock and we are already OVER the limit, 
+            // FORCE the lock immediately without relying on checkAnyTrigger's sticky logic.
+            // This bypasses all the complex reward/sticky state and directly enforces the limit.
+            if (newStrictLock && !this.isWhitelisted()) {
+                const triggers = this.settings.hardLockTriggers || {};
+                const sessionLimit = triggers.sessionLimit || {};
+                if (sessionLimit.enabled) {
+                    const limitSeconds = (sessionLimit.value || 1) * 60;
+                    if (this.activeSeconds >= limitSeconds) {
+                        // Clear any lingering reward state that might interfere
+                        this.originalRewardSeconds = 0;
+                        this.sessionBaseSeconds = 0;
+                        this.saveTimer();
+                        this.stateHardLock('limit');
+                        return;
+                    }
+                }
             }
 
             // 2. IMMEDIATE TRIGGER CHECK (Low Latency)
@@ -476,6 +523,8 @@ class CureVault {
             // 3. Perform definitive check for background-dependent states (Windowed limits, persistent locks)
             this.evaluateAllTriggers().then(() => {
                 this.forceRefreshUI();
+                // FIX 123: Always restart the monitor after settings change to keep timer running
+                this.stateMonitor();
             });
             return;
         }
@@ -486,6 +535,19 @@ class CureVault {
             if (root && root.getElementById(this.overlayId)) {
                 MediaController.startEnforcement();
             }
+        }
+
+        // TEST ZONE HANDLERS
+        if (request.action === 'factoryResetComplete') {
+            window.location.reload();
+        }
+
+        if (request.action === 'forceGlobalUnlock') {
+            // Emulate a successful unlock
+            this.stickyUnlocked = true;
+            sessionStorage.setItem(`cure_sticky_unlocked_${window.location.hostname}`, 'true');
+            this.removeOverlay();
+            this.forceRefreshUI();
         }
     }
 
@@ -743,8 +805,17 @@ class CureVault {
                     }
 
                     if (masterRemindersOn && reminderActive) {
-                        const mins = Math.floor(this.activeSeconds / 60);
-                        this.renderReminderOverlay(mins);
+                        // FIX 121: Respect reminderWhitelist setting on reminder re-render
+                        const isWhitelisted = this.isWhitelisted();
+                        const allowOnWhitelist = !!this.settings.reminderWhitelist;
+                        
+                        if (!isWhitelisted || allowOnWhitelist) {
+                            const mins = Math.floor(this.activeSeconds / 60);
+                            this.renderReminderOverlay(mins);
+                        } else {
+                            // Whitelisted and setting is off - clear the reminder state
+                            localStorage.removeItem('cure_reminder_active');
+                        }
                         return resolve();
                     }
 
@@ -793,12 +864,16 @@ class CureVault {
             return false; // Still have earned time
         }
 
-        // FIX 81: stickyUnlocked should ONLY protect during active reward usage.
+        // FIX 81/122: stickyUnlocked should ONLY protect during active reward usage.
         // Once the user is in 'up' mode AND has exceeded their originalRewardSeconds,
         // their reward time is consumed and they should be subject to limits again.
+        // FIX 122: If no reward was granted (rewardSecondsGranted === 0), 
+        // stickyUnlocked should NOT provide infinite protection.
+        // It should only persist for session/unlimited types when mode is 'up' from a legitimate unlock.
         if (this.stickyUnlocked) {
-            // If we're in 'up' mode and have exceeded the reward time worth of usage, clear the flag
             const rewardSecondsGranted = this.originalRewardSeconds || 0;
+            const rewardType = this.settings.unlockRewardType || 'time';
+            
             if (rewardSecondsGranted > 0 && this.activeSeconds >= rewardSecondsGranted) {
                 // Reward time is used up - clear protection
                 this.stickyUnlocked = false;
@@ -812,10 +887,18 @@ class CureVault {
                     chrome.runtime.sendMessage({ action: 'clearLockState', hostname: window.location.hostname });
                 }
                 // Fall through to check limits
-            } else if (rewardSecondsGranted === 0) {
-                // No reward was granted (session/unlimited type) - stickyUnlocked persists
+            } else if (rewardSecondsGranted === 0 && (rewardType === 'session' || rewardType === 'unlimited')) {
+                // Session/Unlimited type with no time-based reward - stickyUnlocked persists
                 // until the user leaves or session times out
                 return false;
+            } else if (rewardSecondsGranted === 0) {
+                // FIX 122: No reward was granted and NOT session/unlimited type.
+                // This means strict lock was OFF when they unlocked - NO protection.
+                // Clear the flag and check limits normally.
+                this.stickyUnlocked = false;
+                sessionStorage.removeItem(`cure_sticky_unlocked_${window.location.hostname}`);
+                sessionStorage.removeItem('cure_success_page_active');
+                // Fall through to check limits
             } else {
                 // Still within reward time in 'up' mode - protected
                 return false;
@@ -1484,13 +1567,21 @@ class CureVault {
                 const extraSeconds = (response && response.consumed) || 0;
 
                 // Prepare timer mode locally
+                // FIX 120: Timer Preservation - Don't reset to 0, keep the time spent.
                 if (this.settings.masterHardLock === false || this.isWhitelisted()) {
+                    // Strict Lock is OFF or site is whitelisted - just continue counting up.
+                    // DO NOT reset activeSeconds, keep the time already accumulated.
                     this.mode = 'up';
-                    this.activeSeconds = 0;
+                    // FIX 124: Clear reward tracking so it doesn't interfere when re-locking later
+                    this.sessionBaseSeconds = 0;
+                    this.originalRewardSeconds = 0;
                 } else if (this.settings.unlockRewardType === 'session' || this.settings.unlockRewardType === 'unlimited') {
+                    // Session/Unlimited mode - also just count up, but from 0 as a new "session" conceptually.
+                    // For these, resetting makes sense as they're session-based, not time-based.
                     this.mode = 'up'; 
                     this.activeSeconds = 0;
                 } else {
+                    // Time-based reward: Switch to countdown mode
                     this.sessionBaseSeconds = this.activeSeconds;
                     this.originalRewardSeconds = (mins * 60) + extraSeconds;
                     this.activeSeconds = this.originalRewardSeconds;
@@ -1972,7 +2063,7 @@ class CureVault {
         overlay.dataset.mode = mode; // Ensure mode is synced if element already existed
         overlay.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: #F5F5F7; z-index: 100;
+            background: #F5F5F7; z-index: 2147483647;
             overflow-y: auto;
         `;
 
@@ -2025,7 +2116,7 @@ class CureVault {
                     <p style="color:#1D1D1F; font-size:18px; font-weight: 500; margin-bottom: 24px;">
                         Are you being productive, or just scrolling?
                     </p>
-                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #D1D1D6; color:#86868B; box-shadow:none; margin: 0 auto; min-width: 240px;">
+                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #D1D1D6; color:#86868B; box-shadow:none; margin: 0 auto;">
                         Continue Wasting Time
                     </button>
                 </div>
@@ -2584,7 +2675,7 @@ class CureVault {
                 </div>
 
                 <div class="cure-action-wrapper">
-                    <button id="cure-finished-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; height: 56px; min-width: 240px;">Continue to Site</button>
+                    <button id="cure-finished-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; height: 56px;">Continue to Site</button>
                 </div>
             </div>
             </div>

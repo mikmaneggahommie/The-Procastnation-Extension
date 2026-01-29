@@ -648,6 +648,111 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'factoryReset') {
+        // 1. Clear ALL storage
+        chrome.storage.local.clear(() => {
+            chrome.storage.sync.clear(() => {
+                // 2. Reset to Defaults
+                chrome.storage.sync.set({ settings: DEFAULT_SETTINGS }, () => {
+                    // 3. Clear Cache
+                    g_settingsCache = null;
+                    g_dailyStats = null;
+                    
+                    // 4. Update Blocking Rules (Clear them)
+                    updateBlockingRules([]);
+
+                    // 5. Notify all tabs to reload/reset
+                    chrome.tabs.query({}, (tabs) => {
+                        for (const tab of tabs) {
+                            if (tab.id) {
+                                chrome.tabs.sendMessage(tab.id, { action: 'factoryResetComplete' }).catch(() => {});
+                            }
+                        }
+                    });
+
+                    sendResponse({ success: true });
+                });
+            });
+        });
+        return true;
+    }
+
+    if (request.action === 'forceUnlockAll') {
+        // 1. Get all keys from local storage
+        chrome.storage.local.get(null, (items) => {
+            const keysToRemove = [];
+            // Find all lock keys
+            Object.keys(items).forEach(key => {
+                if (key.startsWith('lock_')) {
+                    keysToRemove.push(key);
+                }
+            });
+
+            // 2. Remove all lock keys
+            if (keysToRemove.length > 0) {
+                chrome.storage.local.remove(keysToRemove, () => {
+                    // 3. Broadcast to all active tabs to unlock immediately
+                    chrome.tabs.query({}, (tabs) => {
+                        for (const tab of tabs) {
+                            if (tab.id) {
+                                chrome.tabs.sendMessage(tab.id, { action: 'forceGlobalUnlock' }).catch(() => {});
+                            }
+                        }
+                    });
+                    sendResponse({ success: true, count: keysToRemove.length });
+                });
+            } else {
+                sendResponse({ success: true, count: 0 });
+            }
+        });
+        return true;
+    }
+
+    if (request.action === 'forceUnlockSite') {
+        const { hostname, tabId } = request;
+        if (!hostname) {
+            sendResponse({ success: false });
+            return true;
+        }
+
+        const key = `lock_${hostname}`;
+        // 1. Remove the lock key
+        chrome.storage.local.remove(key, () => {
+            // 2. Direct unlock to the requesting tab (Fastest feedback)
+            if (tabId) {
+                chrome.tabs.sendMessage(tabId, { 
+                    action: 'forceGlobalUnlock',
+                    hostname: hostname 
+                }).catch(() => { /* Tab might be closed or restricted */ });
+            }
+
+            // 3. Broadcast to all other tabs of this site (Consistency)
+            // Wrapped in try-catch for safety
+            try {
+                chrome.tabs.query({ url: "*://" + hostname + "/*" }, (tabs) => {
+                    if (chrome.runtime.lastError) {
+                        // Pattern might be invalid for some hostnames (e.g. localhost with port)
+                        console.warn('[Cure] Broadcast query failed:', chrome.runtime.lastError);
+                        return;
+                    }
+                    for (const tab of tabs) {
+                        if (tab.id && tab.id !== tabId) { // Skip already messaged tab
+                            chrome.tabs.sendMessage(tab.id, { 
+                                action: 'forceGlobalUnlock',
+                                hostname: hostname 
+                            }).catch(() => {});
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('[Cure] Broadcast error in background:', e);
+            }
+
+            sendResponse({ success: true });
+        });
+        return true;
+    }
+
 });
 
 // Helper to get formatted logical date (incorporating start hour)

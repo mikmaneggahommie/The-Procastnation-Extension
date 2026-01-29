@@ -18,7 +18,6 @@
   pointer-events: auto; /* Fix 67: Ensure overlay stays interactive while host is click-through */
 }
 
-
 /* --- PILL RESTRAINT --- */
 /* Fail-safe: If an overlay is active, NEVER show the pill */
 :host(:has(#cure-overlay-id)) #cure-pill {
@@ -528,7 +527,7 @@
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  min-width: 200px;
+  min-width: 320px; /* Standardized width for consistency */
   height: 56px;
   /* FIXED HEIGHT */
   transition: all 0.2s ease;

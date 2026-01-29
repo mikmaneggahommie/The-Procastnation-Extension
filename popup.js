@@ -1340,6 +1340,63 @@ function setupNewViewListeners() {
             showSavedIndicator();
         });
     });
+
+    // TEST ZONE BUTTONS
+    document.getElementById('test-factory-reset-btn')?.addEventListener('click', () => {
+        if (confirm('⚠️ FACTORY RESET: This will wipe ALL settings and data. Are you sure?')) {
+            chrome.runtime.sendMessage({ action: 'factoryReset' }, (res) => {
+                if (res && res.success) {
+                    alert('Reset complete. Extension will reload.');
+                    chrome.runtime.reload(); // Hard reload of the extension process
+                }
+            });
+        }
+    });
+
+    document.getElementById('test-unlock-site-btn')?.addEventListener('click', () => {
+        // Query active tab to unlock specific site
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            const currentTab = tabs[0];
+            if (!currentTab || !currentTab.url) {
+                alert('No active site detected (Tab/URL unavailable).');
+                return;
+            }
+
+            let hostname;
+            try {
+                hostname = new URL(currentTab.url).hostname;
+            } catch (e) {
+                alert('Invalid URL for unlocking.');
+                return;
+            }
+
+            // Fix 15: Send tabId for precise targeting + hostname for key removal
+            chrome.runtime.sendMessage({ 
+                action: 'forceUnlockSite', 
+                hostname: hostname,
+                tabId: currentTab.id 
+            }, (res) => {
+                const lastError = chrome.runtime.lastError;
+                if (lastError) {
+                    alert('Unlock Verification Failed: ' + lastError.message);
+                    return;
+                }
+
+                if (res && res.success) {
+                    const btn = document.getElementById('test-unlock-site-btn');
+                    const originalText = btn.innerHTML;
+                    // Truncate hostname for button UI
+                    const shortHost = hostname.length > 20 ? hostname.substring(0, 18) + '...' : hostname;
+                    btn.innerHTML = `✅ Unlocked ${shortHost}`;
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                    }, 2000);
+                } else {
+                    alert('Background failed to process unlock request (No success response).');
+                }
+            });
+        });
+    });
 }
 
 
