@@ -1124,7 +1124,11 @@ function setupListeners() {
                             action: 'debugTrigger', 
                             type: debugActions[id] 
                         }).catch(err => {
-                            console.error('[Cure] Debug trigger failed:', err);
+                            if (err.message.includes('Could not establish connection')) {
+                                console.warn('[Cure] Tab needs refresh to receive debug signals.');
+                            } else {
+                                console.error('[Cure] Debug trigger failed:', err);
+                            }
                         });
                     }
                 });

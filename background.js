@@ -204,9 +204,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (hostname && tabId && chrome.storage.session) {
             // Track this challenge extension-wide
             chrome.storage.session.set({ [`cure_challenge_active_${tabId}`]: hostname });
-            // PESSIMISTIC LOCKING: Assume they might quit/fail, so set the flag NOW.
-            // It will be cleared only on success or voluntary "Give Up".
+            
+            // 🛑 CRITICAL / LOCKED FEATURE 🛑
+            // DO NOT CHANGE THIS LOGIC. SEE LOCKED_FEATURES.md
+            // PESSIMISTIC LOCKING: We set the reset flag NOW. It stays until explicit success/giveup.
+            // This prevents bypass via tab kill/crash/unload.
             chrome.storage.session.set({ [`cure_needs_reset_${hostname}`]: true });
+            
             console.log(`[Cure] Challenge started on ${hostname} (Tab ${tabId}) - Reset Flag SET`);
         }
         sendResponse({ success: true });

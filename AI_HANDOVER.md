@@ -40,6 +40,17 @@ This project uses a strict Git Safety Net. You must follow this workflow:
 - **Iframe Logic**: The extension runs on both main frames and iframes. `isIframe` checks are critical but were recently tuned to allow toasts. Be careful re-introducing blockers.
 - **Instant Locking**: The "Test Zone" buttons in popup only target the _active tab_. Do not change this to global broadcasting without understanding the "Iframe Storm" bug.
 
+## 🗣️ User Intent Mapping (The "Magic Phrases")
+
+The user prefers natural language over technical commands. Interpret these phrases strictly:
+
+- **"Lock it in" / "Save this"** → `git add . && git commit -m "..." && git push`
+- **"Undo it" / "Go back"** → `git reset --hard` (or delete branch)
+- **"Start a new task"** → `git checkout -b [task-name]`
+- **"Reverting"**: If you are in a feature branch and things go wrong, do NOT keep patching it. Offer to `git checkout main` and delete the failed branch.
+
+**Always confirm** which branch you are on before executing destructive revert commands.
+
 ## 🚀 Working Features Log (The Time Machine)
 
 Any AI working on this project MUST look at this log before reverting. When a user says a feature is "perfect", add it here with the commit hash.

@@ -389,7 +389,7 @@ class CureVault {
 
             if (!this._toastDebounce) {
                 this._toastDebounce = true;
-                this.showToast('⚠️ Progress reset: You must stay on the tab!', 'warning');
+                this.showToast('⚠️ Progress Reset : stay on tab', 'warning');
                 setTimeout(() => { this._toastDebounce = false; }, 1000); 
             }
         }
@@ -1506,7 +1506,7 @@ class CureVault {
             // Only show toast if actually earned something
             if (response && response.earned > 0) {
                 const mins = Math.ceil(response.earned / 60);
-                this.showToast(`🍏 +${mins} ${mins === 1 ? 'minute' : 'minutes'} reward time earned!`, 'success');
+                this.showToast(`+${mins}m Earned 🍏`, 'success');
             }
         });
 
@@ -1715,7 +1715,7 @@ class CureVault {
                             MediaController.pauseAll();
                         } else {
                             const site = this.getSiteName();
-                            this.showToast(`You've been on ${site} for ${mins} ${mins === 1 ? 'minute' : 'minutes'}.`, 'warning');
+                            this.showToast(`${site}: ${mins}m ⚠️`, 'warning');
                         }
                     }
                 }
@@ -1738,7 +1738,7 @@ class CureVault {
                                     this.renderReminderOverlay(Math.floor(launchRes.browserSeconds / 60), 'browser');
                                     MediaController.pauseAll();
                                 } else {
-                                    this.showToast(`Daily browsing limit reached (${Math.floor(launchRes.browserSeconds / 60)}m).`, 'warning');
+                                    this.showToast('Daily Limit! ⚠️', 'warning');
                                 }
                                 sessionStorage.setItem('cure_remind_browser_shown', '1');
                             }
@@ -1755,7 +1755,7 @@ class CureVault {
                                     this.renderReminderOverlay(launchRes.currentLaunches, 'launch');
                                     MediaController.pauseAll();
                                 } else {
-                                    this.showToast(`Visit limit reached (${launchRes.currentLaunches} visits).`, 'warning');
+                                    this.showToast('Visit Limit! ⚠️', 'warning');
                                 }
                                 sessionStorage.setItem('cure_remind_launch_shown', '1');
                             }
@@ -1932,7 +1932,7 @@ class CureVault {
             style.textContent = `
                 @keyframes cure-pulse-nuclear {
                     0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); transform: translateX(-50%) scale(1); }
-                    70% { box-shadow: 0 0 0 20px rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1.05); }
+                    70% { box-shadow: 0 0 0 15px rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1.02); }
                     100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1); }
                 }
             `;
@@ -1941,23 +1941,24 @@ class CureVault {
 
         popout.style.cssText = `
             position: fixed;
-            bottom: 30px;
+            bottom: 35px;
             left: 50%;
             transform: translateX(-50%);
-            background: ${type === 'warning' ? '#FF3B30' : '#007AFF'};
+            background: ${ (type === 'warning' || type === 'error') ? '#FF3B30' : '#007AFF' };
             color: white;
-            padding: 12px 24px;
+            padding: 8px 16px;
             border-radius: 50px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             z-index: 2147483647;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             opacity: 0; 
             transition: opacity 0.3s ease, transform 0.3s ease;
+            white-space: nowrap;
             pointer-events: auto;
             animation: cure-pulse-nuclear 2s infinite;
         `;
@@ -1970,7 +1971,7 @@ class CureVault {
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '✕';
-        closeBtn.style.cssText = "background:rgba(255,255,255,0.2); border:none; width:24px; height:24px; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px;";
+        closeBtn.style.cssText = "background:rgba(255,255,255,0.2); border:none; width:20px; height:20px; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;";
         
         // Handle Close Button Click
         closeBtn.onclick = () => {
@@ -2792,7 +2793,7 @@ class CureVault {
                         <div style="flex-grow:1;"></div>
                         <span id="cure-count" style="font-size:14px; color:#86868B; font-weight:500;">0 Words</span>
                     </div>
-                    <textarea id="cure-input" class="cure-typing-input" placeholder="Start typing here..." autocomplete="off"></textarea>
+                    <textarea id="cure-input" class="cure-typing-input" placeholder="Start typing here..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     
                     <div class="cure-shortcuts-container" style="margin-top: 12px;">
                         <button id="cure-give-up-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow:none;">
@@ -2814,8 +2815,13 @@ class CureVault {
                             op: 'remove', 
                             key: 'cure_typing_active_global' 
                         });
-                        // NEW FIX: Clear the Global Reset Flag as well (Pessimistic Locking)
-                        // Since they are voluntarily exiting, we don't need to warn them about a "Reset".
+                        this.safeSendMessage({ 
+                            action: 'sessionStorageProxy', 
+                            op: 'remove', 
+                            key: 'cure_typing_active_global' 
+                        });
+                        // 🛑 CRITICAL: Clear the Global Reset Flag
+                        // Since they are voluntarily exiting, we don't need to warn them.
                         this.safeSendMessage({ action: 'clearResetFlag', hostname: window.location.hostname });
                     }
                     this.renderDecisionScreen(this.settings.hardLockDuration || 30); // Go back
@@ -2843,6 +2849,16 @@ class CureVault {
 
         input.value = '';
         input.disabled = true;
+
+        // Anti-Cheat: Block Copy/Paste & Drag/Drop
+        const blockCheat = (e) => {
+            e.preventDefault();
+            this.showToast('No Copy/Paste 🚨', 'error');
+        };
+        input.onpaste = blockCheat;
+        input.ondrop = blockCheat;
+        // Optional: Block context menu to hide "Paste" option visually
+        input.oncontextmenu = (e) => e.preventDefault();
 
         this.fetchChallengeText(difficulty).then(rawText => {
             const text = normalizeTypingText(rawText);
@@ -2919,7 +2935,13 @@ class CureVault {
                 op: 'remove', 
                 key: 'cure_typing_active_global' 
             });
-            // NEW FIX: Clear Global Reset Flag on Success
+            this.safeSendMessage({ 
+                action: 'sessionStorageProxy', 
+                op: 'remove', 
+                key: 'cure_typing_active_global' 
+            });
+            // 🛑 CRITICAL: Clear Global Reset Flag on Success
+            // This is the ONLY safe place to clear it.
             this.safeSendMessage({ action: 'clearResetFlag', hostname: window.location.hostname });
         }
 
