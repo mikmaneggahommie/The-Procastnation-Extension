@@ -36,22 +36,24 @@ This is how you manage any AI working on this project. Use these **Magic Phrases
 
 ---
 
-### 📖 GitHub Jargon Decoded
+### 📖 A Simple "Workday" Story (How it works)
 
-| Term                  | What it means to You                                                                                                                      |
-| :-------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
-| **`main`**            | Your "Real" code. It should always be 100% working.                                                                                       |
-| **`Branch`**          | A temporary "Test Room." The AI makes a copy of your code here to experiment. If they break it, your `main` code is still safe.           |
-| **`refine-toast-ui`** | An example of a branch name. The AI chooses these automatically based on your request (e.g., `fix-reminders`).                            |
-| **`Tag`**             | A "Golden Bookmark." I created one called `v-stable-toast-fix`. This is a permanent marker that stays even if you delete everything else. |
-| **`Commit`**          | A "Save Point." Each time the AI saves, it adds a new commit to the history.                                                              |
+1.  **You**: "Read the docs. Start a new branch. Now, fix the size of the number in the reminder screen."
+2.  **AI**: Detects your request. Creates a temporary branch called `fix-reminder-numbers`. Makes the fix.
+3.  **You**: You check it. It looks great!
+4.  **You**: "Perfect. Do the github thing."
+5.  **AI**: It records the "Safe Point" in **MILESTONES.md**, moves the fix into your **main** code, and pushes it to GitHub.
+6.  **Next Task**: You ask for the next thing. The AI starts over at Step 1 with a **new** branch.
 
 ---
 
-### ❓ Why this works:
+### 📖 GitHub Jargon Decoded
 
-1.  **Safety Room**: The AI works in a "Branch" (a copy), so your main code stays safe until you say "Perfect."
-2.  **Permanent Memory**: `MILESTONES.md` tells the AI exactly which version of the code was perfect, so they can't "forget" it.
-3.  **Surgical Repair**: You can fix one specific bug without losing all your other progress.
+| Term         | What it means to You                                                               |
+| :----------- | :--------------------------------------------------------------------------------- |
+| **`main`**   | Your "Real" code. It should always be 100% working.                                |
+| **`Branch`** | A temporary "Test Room." The AI handles the naming for you (e.g. `fix-reminders`). |
+| **`Tag`**    | A "Golden Bookmark." Permanent marker of a stable version.                         |
+| **`Commit`** | A "Save Point" in your history.                                                    |
 
-**You are now the Manager. Everything is backed up and safe on GitHub!** 🚀🛡️
+**You are now the Manager. Everything is backed up and safe!** 🚀🛡️
