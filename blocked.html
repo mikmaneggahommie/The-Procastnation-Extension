@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #f8f9fa;
+            color: #3c4043;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            text-align: center;
+            border: 1px solid #dadce0;
+            box-sizing: border-box;
+        }
+        .icon { 
+            font-size: 32px; 
+            margin-bottom: 8px;
+            filter: grayscale(0.5);
+        }
+        .title { 
+            font-size: 14px; 
+            font-weight: 600; 
+            margin: 0;
+            color: #202124;
+        }
+        .desc { 
+            font-size: 11px; 
+            color: #70757a; 
+            margin: 4px 0 0;
+        }
+        /* Mobile/Small Iframe Optimization */
+        @media (max-height: 150px) {
+            .icon { font-size: 24px; margin-bottom: 4px; }
+            .title { font-size: 12px; }
+            .desc { display: none; }
+        }
+        @media (max-height: 80px) {
+            .icon { font-size: 20px; margin-bottom: 0; }
+            .title { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="icon">🔒</div>
+    <p class="title">Blocked by Cure</p>
+    <p class="desc">Distraction filter active</p>
+</body>
+</html>

@@ -1,0 +1,1572 @@
+// Cure Procrastination - Clean Logic + Help
+
+let currentSettings = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSettings();
+    renderAll();
+    setupListeners();
+    setupNewViewListeners(); // New listeners for Pause/Reminders
+});
+
+async function loadSettings() {
+    return new Promise(resolve => {
+        chrome.runtime.sendMessage({ action: 'getSettings' }, response => {
+            if (!response || !response.settings) {
+                console.error('[Cure] Failed to get response or settings from background');
+                currentSettings = null;
+                resolve();
+                return;
+            }
+            currentSettings = response.settings;
+            if (!currentSettings.shortcuts) currentSettings.shortcuts = [];
+            if (!currentSettings.blacklist) currentSettings.blacklist = [];
+            
+            // Defaults for master switches if undefined (legacy support)
+            if (typeof currentSettings.masterHardLock === 'undefined') currentSettings.masterHardLock = true;
+            if (typeof currentSettings.masterPause === 'undefined') currentSettings.masterPause = true;
+            if (typeof currentSettings.masterReminders === 'undefined') currentSettings.masterReminders = true;
+
+            populateInputs();
+            autoFillCurrentSite(); // Trigger auto-fill
+            resolve();
+        });
+    });
+}
+
+function autoFillCurrentSite() {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!tabs || !tabs[0] || !tabs[0].url) return;
+        const tab = tabs[0];
+        try {
+            const urlObj = new URL(tab.url);
+            // Whitelist: Domain only (example.com)
+            const domain = urlObj.hostname.replace(/^www\./, '');
+            const input = document.getElementById('new-site-input');
+            if (input) input.value = domain;
+
+            // Shortcut: Title & Origin (or domain if preferred)
+            const sName = document.getElementById('new-shortcut-name');
+            const sUrl = document.getElementById('new-shortcut-url');
+
+            // Smart Clean Title: Strip TLDs for a cleaner look
+            // e.g. "youtube.com" -> "Youtube", "notion.so" -> "Notion"
+            let cleanTitle = domain.replace(/\.(com|org|net|io|co|me|ai|so|app|edu|gov|ly|info|biz|tv)$/i, '');
+            cleanTitle = cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1);
+
+            // Only fall back to Title if domain is obscure/numeric (basic heuristic)
+            if (cleanTitle.length < 3) {
+                cleanTitle = tab.title.split(/[:|\-]/)[0].trim();
+            }
+
+            if (sName) sName.value = cleanTitle;
+            if (sUrl) sUrl.value = urlObj.origin; // https://example.com
+
+        } catch (e) {
+            console.log('Cannot parse URL for auto-fill');
+        }
+    });
+}
+
+const UNIT_FACTORS = {
+    'sec': 1,
+    'min': 60,
+    'hr': 3600,
+    'day': 86400,
+    'week': 604800
+};
+
+function saveSettings() {
+    // FORCE SYNC: Read master switches directly from DOM to ensure state is accurate
+    const masterHL = document.getElementById('master-hardlock-enable');
+    const masterPause = document.getElementById('master-pause-enable');
+    const masterRemind = document.getElementById('master-reminders-enable');
+
+    if (masterHL) currentSettings.masterHardLock = masterHL.checked;
+    if (masterPause) currentSettings.masterPause = masterPause.checked;
+    if (masterRemind) currentSettings.masterReminders = masterRemind.checked;
+
+    chrome.runtime.sendMessage({ action: 'updateSettings', settings: currentSettings });
+}
+
+/**
+ * Validates settings before saving.
+ * Returns { valid: boolean, warnings: string[], errors: string[] }
+ */
+function validateSettings() {
+    const errors = [];
+    const warnings = [];
+
+    // Get Site Activity Limit values
+    const sessionEnabled = document.getElementById('trigger-session-enable').checked;
+    const limitSeconds = getConvertedVal('hardlock-input', 'hardlock-unit');
+    const windowSeconds = parseInt(document.getElementById('session-reset-window').value) || 0;
+
+    // Get reward values
+    const rewardUnitEl = document.getElementById('unlock-reward-unit');
+    const rewardUnit = rewardUnitEl ? rewardUnitEl.value : 'min';
+    const rewardSeconds = (rewardUnit === 'session' || rewardUnit === 'unlimited')
+        ? 0
+        : getConvertedVal('unlock-reward-input', 'unlock-reward-unit');
+
+    // Get browser limit values
+    const browserEnabled = document.getElementById('trigger-browser-enable').checked;
+    const browserLimitSeconds = getConvertedVal('browser-limit-input', 'browser-limit-unit');
+    const browserWindowSeconds = parseInt(document.getElementById('browser-limit-window').value) || 86400;
+
+    // VALIDATION RULE 1: Limit cannot equal or exceed window (Deadlock / Impossible)
+    if (sessionEnabled && windowSeconds > 0) {
+        if (limitSeconds >= windowSeconds) {
+            const limitStr = formatTime(limitSeconds);
+            const windowStr = formatWindow(windowSeconds);
+            errors.push(`Limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}). This creates a deadlock.`);
+        }
+    }
+
+    if (browserEnabled && browserWindowSeconds > 0) {
+        if (browserLimitSeconds >= browserWindowSeconds) {
+            const limitStr = formatTime(browserLimitSeconds);
+            const windowStr = formatWindow(browserWindowSeconds);
+            errors.push(`Browser limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}).`);
+        }
+    }
+
+    // VALIDATION RULE 2: Removed (Reward Trap)
+    // if (sessionEnabled && rewardSeconds > 0 && windowSeconds > 0) { ... }
+
+    // VALIDATION RULE 3: Minimum limit of 1 minute (prevents instant lock)
+    if (sessionEnabled && limitSeconds < 60) {
+        errors.push('Limit must be at least 1 minute.');
+    }
+    if (browserEnabled && browserLimitSeconds < 60) {
+        errors.push('Browser limit must be at least 1 minute.');
+    }
+
+    // --- DOCTOR STRANGE HEURISTICS (Toxic Configs) ---
+
+    // RULE 4: The Flicker Trap (Limit > 95% of Window)
+    if (sessionEnabled && windowSeconds > 0) {
+        if (limitSeconds > windowSeconds * 0.95) {
+            warnings.push('<strong>Flicker Warning:</strong> Limit is very close to window size. You may get locked/unlocked constantly.');
+        }
+    }
+
+
+
+
+
+    // RULE 7: Passive Inflation (Output > Input)
+    const passiveEnabled = document.getElementById('proto-passive-enable').checked;
+    if (passiveEnabled) {
+        const earnSeconds = getConvertedVal('passive-reward-val', 'passive-reward-unit');
+        const workSeconds = getConvertedVal('passive-work-val', 'passive-work-unit');
+        if (earnSeconds > workSeconds) {
+            errors.push('<strong>Passive Inflation:</strong> You cannot earn more time than you work. This breaks the laws of physics (and productivity).');
+        }
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors,
+        warnings
+    };
+}
+
+function formatTime(seconds) {
+    if (seconds >= 86400) return Math.floor(seconds / 86400) + ' day' + (seconds >= 172800 ? 's' : '');
+    if (seconds >= 3600) return Math.floor(seconds / 3600) + ' hour' + (seconds >= 7200 ? 's' : '');
+    if (seconds >= 60) return Math.floor(seconds / 60) + ' min';
+    return seconds + ' sec';
+}
+
+function formatWindow(seconds) {
+    if (seconds >= 86400) return 'day';
+    if (seconds >= 3600) return 'hour';
+    if (seconds >= 1800) return '30 min';
+    return 'visit';
+}
+
+function showValidationWarning(message, isError = false) {
+    const banner = document.getElementById('validation-warning');
+    const text = document.getElementById('validation-warning-text');
+    if (banner && text) {
+        text.innerHTML = message;
+        banner.style.display = 'block';
+
+        // Apply different colors for errors vs warnings
+        if (message.includes('Invalid') || message.includes('Cannot')) {
+            banner.style.background = '#F8D7DA';
+            banner.style.border = '1px solid #F5C6CB';
+            banner.style.color = '#721C24';
+        } else {
+            banner.style.background = '#FFF3CD';
+            banner.style.border = '1px solid #FFE69C';
+            banner.style.color = '#856404';
+        }
+    }
+}
+
+function hideValidationWarning() {
+    const banner = document.getElementById('validation-warning');
+    if (banner) banner.style.display = 'none';
+}
+
+
+function getConvertedVal(id, unitId) {
+    const input = document.getElementById(id);
+    const unit = document.getElementById(unitId);
+    if (!input || !unit) return 0;
+
+    const val = parseInt(input.value) || 0;
+    const unitVal = unit.value;
+    return val * (UNIT_FACTORS[unitVal] || 60); // Default to min factor if missing
+}
+
+function setConvertedVal(id, unitId, totalSecs) {
+    const input = document.getElementById(id);
+    const selector = document.getElementById(unitId);
+    if (!input || !selector) return;
+
+    if (totalSecs >= 86400 && selector.querySelector('option[value="day"]')) {
+        input.value = Math.floor(totalSecs / 86400);
+        selector.value = 'day';
+    } else if (totalSecs >= 3600 && selector.querySelector('option[value="hr"]')) {
+        input.value = Math.floor(totalSecs / 3600);
+        selector.value = 'hr';
+    } else if (totalSecs >= 60 && selector.querySelector('option[value="min"]')) {
+        input.value = Math.floor(totalSecs / 60);
+        selector.value = 'min';
+    } else {
+        input.value = totalSecs;
+        selector.value = 'sec';
+    }
+    updateUnitGrammar(id, unitId);
+}
+
+function updateUnitGrammar(inputId, unitId) {
+    const input = document.getElementById(inputId);
+    const selector = document.getElementById(unitId);
+    if (!input || !selector) return;
+
+    // 1. Handle "Unlimited" visibility (The "Grant 5 Unlimited" Fix)
+    // ONLY hide for 'unlimited', keep visible for 'session' (launches), 'min', 'hr'
+    if (selector.tagName === 'SELECT' && selector.value === 'unlimited') {
+        input.style.display = 'none';
+        // Remove left border radius from selector to look clean
+        selector.style.borderRadius = '6px';
+        selector.style.marginLeft = '0';
+    } else {
+        input.style.display = 'inline-block';
+        selector.style.borderRadius = '0 6px 6px 0';
+        selector.style.marginLeft = '-1px';
+    }
+
+    const val = parseInt(input.value) || 0;
+    const isSingular = val === 1;
+
+    // 2. Handle Pluralization
+    const options = (selector.tagName === 'SELECT') ? selector.querySelectorAll('option') : [];
+
+    if (options.length > 0) {
+        options.forEach(opt => {
+            let base = opt.getAttribute('data-base');
+            if (!base) {
+                // First-time setup: store the base singular form
+                let text = opt.textContent.trim().toLowerCase();
+
+                // Robust singular discovery
+                if (text === 'unlimited access' || text === 'unlimited access') {
+                    base = 'unlimited access';
+                } else if (text === 'launches' || text === 'launch') {
+                    base = 'launch';
+                } else if (text.endsWith('s') && !text.endsWith('ss')) {
+                    base = text.slice(0, -1);
+                } else {
+                    base = text;
+                }
+
+                opt.setAttribute('data-base', base);
+            }
+
+            if (isSingular) {
+                opt.textContent = base;
+            } else {
+                if (base === 'launch') opt.textContent = 'launches';
+                else if (base === 'unlimited access') opt.textContent = base;
+                else opt.textContent = base + 's';
+            }
+        });
+    } else {
+        // Labels (e.g. "launch(es)")
+        let text = selector.textContent;
+        // Fix the specific "launch(es)" issue
+        if (inputId === 'launch-limit-input') {
+            selector.textContent = isSingular ? 'launch' : 'launches';
+            return;
+        }
+        if (inputId === 'challenge-length-input') {
+            selector.textContent = isSingular ? 'word' : 'words';
+            return;
+        }
+
+        // General fallback
+        if (text.endsWith('s')) text = text.slice(0, -1);
+        if (!isSingular) text = text + 's';
+        selector.textContent = text;
+    }
+}
+
+function populateInputs() {
+    const breathing = currentSettings.breathingRoomDuration || 15; // User Req: 15s default
+    const hardlock = currentSettings.hardLockDuration || 30;
+    const reminders = (currentSettings.reminderInterval || 15) * 60; // Storage is min
+    const difficulty = currentSettings.unlockProtocols?.typing?.difficulty || currentSettings.typingDifficulty || 50;
+    const reward = (currentSettings.unlockReward || 5) * 60; // Storage is min
+    const rStyle = currentSettings.reminderStyle || 'toast';
+    const soundOn = currentSettings.soundEnabled !== false; // Default true
+    const sessionTimeout = (currentSettings.sessionTimeoutMins || 30) * 60; // Storage is min
+
+    setConvertedVal('breathing-input', 'breathing-unit', breathing);
+    setConvertedVal('hardlock-input', 'hardlock-unit', hardlock * 60); // legacy min
+    setConvertedVal('reminder-input', 'reminder-unit', reminders);
+    setVal('challenge-length-input', difficulty);
+    setConvertedVal('unlock-reward-input', 'unlock-reward-unit', reward);
+    setVal('unlock-reward-unit', currentSettings.unlockRewardType || 'min');
+    document.getElementById('pill-enable-input').checked = currentSettings.showTimerPill !== false;
+    document.getElementById('pill-whitelist-input').checked = !!currentSettings.showPillOnWhitelist;
+    document.getElementById('whitelist-shortcuts-input').checked = !!currentSettings.whitelistShortcuts;
+
+    // Master Switches
+    const hardLockOn = !!currentSettings.masterHardLock;
+    const pauseOn = !!currentSettings.masterPause;
+    const remindersOn = !!currentSettings.masterReminders;
+
+    document.getElementById('master-hardlock-enable').checked = hardLockOn;
+    document.getElementById('master-pause-enable').checked = pauseOn;
+    document.getElementById('master-reminders-enable').checked = remindersOn;
+
+    // Sync Internal (Inner) Switches
+    const innerHardlock = document.getElementById('inner-master-hardlock');
+    const innerPause = document.getElementById('inner-master-pause');
+    const innerReminders = document.getElementById('inner-master-reminders');
+
+    if (innerHardlock) innerHardlock.checked = hardLockOn;
+    if (innerPause) innerPause.checked = pauseOn;
+    if (innerReminders) innerReminders.checked = remindersOn;
+
+    const triggers = currentSettings.hardLockTriggers || {
+        sessionLimit: { enabled: true, value: 30, windowSeconds: 86400 },
+        browserLimit: { enabled: false, value: 480, windowSeconds: 86400 },
+        launchLimit: { enabled: false, value: 10, windowSeconds: 86400 }
+    };
+
+    const pauseTriggers = currentSettings.pauseTriggers || {
+        launchLimit: { enabled: false, value: 5, windowSeconds: 3600 },
+        browserLimit: { enabled: false, value: 120, windowSeconds: 86400 }
+    };
+
+    const reminderTriggers = currentSettings.reminderTriggers || {
+        launchLimit: { enabled: false, value: 5, windowSeconds: 3600 },
+        browserLimit: { enabled: false, value: 120, windowSeconds: 86400 }
+    };
+
+    // Pause View Inputs
+    setConvertedVal('breathing-input', 'breathing-unit', breathing);
+    const freqEl = document.getElementById('breathing-freq');
+    if (freqEl) freqEl.value = currentSettings.breathingFreq || 'always';
+
+    setChk('pause-trigger-launch-enable', pauseTriggers.launchLimit?.enabled);
+    setVal('pause-trigger-launch-val', pauseTriggers.launchLimit?.value || 5);
+
+    setChk('pause-trigger-browser-enable', pauseTriggers.browserLimit?.enabled);
+    setVal('pause-trigger-browser-val', pauseTriggers.browserLimit?.value || 120);
+
+    setChk('pause-whitelist-enable', !!currentSettings.pauseWhitelist);
+
+    // Reminders View Inputs
+    setConvertedVal('reminder-input', 'reminder-unit', reminders);
+    setChk('reminder-whitelist-enable', !!currentSettings.reminderWhitelist);
+
+    // Reminder Triggers
+    setChk('reminder-trigger-launch-enable', reminderTriggers.launchLimit?.enabled);
+    setVal('reminder-trigger-launch-val', reminderTriggers.launchLimit?.value || 5);
+
+    setChk('reminder-trigger-browser-enable', reminderTriggers.browserLimit?.enabled);
+    setVal('reminder-trigger-browser-val', reminderTriggers.browserLimit?.value || 120);
+
+    const styleSelect = document.getElementById('reminder-style-input');
+    if (styleSelect) styleSelect.value = rStyle;
+
+    // Strict Lock Inputs
+    setChk('trigger-session-enable', triggers.sessionLimit?.enabled);
+    setConvertedVal('hardlock-input', 'hardlock-unit', (triggers.sessionLimit?.value || 30) * 60);
+    setVal('session-reset-window', triggers.sessionLimit?.windowSeconds || 86400);
+
+    setChk('trigger-launch-enable', triggers.launchLimit?.enabled);
+    setVal('launch-limit-input', triggers.launchLimit?.value || 3);
+    setVal('launch-limit-window', triggers.launchLimit?.windowSeconds || 3600);
+
+    setChk('trigger-browser-enable', triggers.browserLimit?.enabled);
+    setConvertedVal('browser-limit-input', 'browser-limit-unit', (triggers.browserLimit?.value || 480) * 60);
+    setVal('browser-limit-window', triggers.browserLimit?.windowSeconds || 86400);
+
+    setVal('browser-limit-window', triggers.browserLimit?.windowSeconds || 86400);
+}
+
+function renderAll() {
+    renderWhitelist();
+    renderShortcuts();
+    renderBlocklist();
+}
+
+function renderWhitelist(filter = '') {
+    const list = document.getElementById('whitelist-container');
+    list.innerHTML = '';
+
+    let items = currentSettings.whitelist || [];
+    if (filter) {
+        items = items.filter(site => site.toLowerCase().includes(filter.toLowerCase()));
+    }
+
+    if (!items.length) {
+    if (!items.length) {
+        list.innerHTML = `<div style="padding:16px;text-align:center;color:#999;font-size:13px;">${filter ? 'No matches' : 'Allowlist is empty'}</div>`;
+        return;
+    }
+        return;
+    }
+    items.forEach((site) => {
+        // Find original index for removal consistency
+        const originalIndex = currentSettings.whitelist.indexOf(site);
+        const item = document.createElement('div');
+        item.className = 'settings-item';
+        item.innerHTML = `
+      <div class="item-text"><h3>${site}</h3></div>
+      <button class="action-btn danger-btn" data-type="whitelist" data-index="${originalIndex}" style="font-size:11px; padding:4px 10px;">Remove</button>
+    `;
+        list.appendChild(item);
+    });
+}
+
+function renderShortcuts(filter = '') {
+    const list = document.getElementById('shortcuts-container');
+    list.innerHTML = '';
+
+    let items = currentSettings.shortcuts || [];
+    if (filter) {
+        items = items.filter(s => s.name.toLowerCase().includes(filter.toLowerCase()) || s.url.toLowerCase().includes(filter.toLowerCase()));
+    }
+
+    if (!items.length) {
+        list.innerHTML = `<div style="padding:16px;text-align:center;color:#999;font-size:13px;">${filter ? 'No matches' : 'No shortcuts'}</div>`;
+        return;
+    }
+    items.forEach((s) => {
+        const originalIndex = currentSettings.shortcuts.indexOf(s);
+        const item = document.createElement('div');
+        item.className = 'settings-item';
+        item.innerHTML = `
+      <div class="item-text">
+        <h3>${s.name}</h3>
+        <p>${s.url}</p>
+      </div>
+      <button class="action-btn danger-btn" data-type="shortcut" data-index="${originalIndex}" style="font-size:11px; padding:4px 10px;">Remove</button>
+    `;
+        list.appendChild(item);
+    });
+}
+
+function renderBlocklist(filter = '') {
+    const list = document.getElementById('blocklist-container');
+    if (!list) return;
+    list.innerHTML = '';
+
+    let items = currentSettings.blacklist || [];
+    if (filter) {
+        items = items.filter(site => site.toLowerCase().includes(filter.toLowerCase()));
+    }
+
+    if (!items.length) {
+        list.innerHTML = `<div style="padding:16px;text-align:center;color:#999;font-size:13px;">${filter ? 'No matches' : 'Blocklist is empty'}</div>`;
+        return;
+    }
+    items.forEach((site) => {
+        const originalIndex = currentSettings.blacklist.indexOf(site);
+        const item = document.createElement('div');
+        item.className = 'settings-item';
+        item.innerHTML = `
+      <div class="item-text"><h3>${site}</h3></div>
+      <button class="action-btn danger-btn" data-type="blacklist" data-index="${originalIndex}" style="font-size:11px; padding:4px 10px;">Remove</button>
+    `;
+        list.appendChild(item);
+    });
+}
+
+function setupListeners() {
+    // --- NAVIGATION ---
+    document.querySelectorAll('.nav-trigger').forEach(el => {
+        el.addEventListener('click', (e) => {
+            // Safety check: don't navigate if clicking a switch/input directly
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'LABEL' || e.target.closest('.switch')) return;
+
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            const t = document.getElementById(el.dataset.target);
+            if (t) t.classList.add('active');
+            updateUIState(); // Ensure the newly opened view respects master switches
+        });
+    });
+
+    document.querySelectorAll('.nav-back').forEach(el => {
+        el.addEventListener('click', () => {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById('home-view').classList.add('active');
+            updateUIState(); // Re-sync
+        });
+    });
+
+    // --- LIST SEARCH LISTENERS ---
+    function toggleAddCard(e) {
+        const controls = e.target.closest('.list-controls');
+        const addCard = controls?.querySelector('.add-card');
+        if (addCard) {
+            addCard.style.display = e.target.value.trim().length > 0 ? 'none' : '';
+        }
+    }
+
+    document.getElementById('whitelist-search')?.addEventListener('input', (e) => {
+        renderWhitelist(e.target.value);
+        toggleAddCard(e);
+    });
+    document.getElementById('shortcuts-search')?.addEventListener('input', (e) => {
+        renderShortcuts(e.target.value);
+        toggleAddCard(e);
+    });
+    document.getElementById('blocklist-search')?.addEventListener('input', (e) => {
+        renderBlocklist(e.target.value);
+        toggleAddCard(e);
+    });
+
+    // --- MASTER SWITCH LISTENERS (Internal & External) ---
+    const masterKeyMap = {
+        'master-hardlock-enable': 'masterHardLock',
+        'inner-master-hardlock': 'masterHardLock',
+        'master-pause-enable': 'masterPause',
+        'inner-master-pause': 'masterPause',
+        'master-reminders-enable': 'masterReminders',
+        'inner-master-reminders': 'masterReminders'
+    };
+    Object.keys(masterKeyMap).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', (e) => {
+                const settingKey = masterKeyMap[id];
+            const isChecked = e.target.checked;
+            currentSettings[settingKey] = isChecked;
+
+            // SYNC ALL TOGGLES for this key
+            Object.keys(masterKeyMap).forEach(otherId => {
+                if (masterKeyMap[otherId] === settingKey) {
+                    const el = document.getElementById(otherId);
+                    if (el) el.checked = isChecked;
+                }
+            });
+
+            saveSettings();
+            updateUIState();
+            
+            // Only show indicator for home-screen master toggles
+            if (id.startsWith('master-')) {
+                showSavedIndicator();
+            }
+        });
+        }
+    });
+
+    // --- HELP MODAL SYSTEM ---
+    const helpModal = document.getElementById('help-modal');
+    const helpModalIcon = document.getElementById('help-modal-icon');
+    const helpModalTitle = document.getElementById('help-modal-title');
+    const helpModalText = document.getElementById('help-modal-text');
+    const helpModalClose = document.getElementById('help-modal-close');
+
+    const helpContent = {
+        'pause-duration': { title: 'Pause Duration', text: 'A mandatory waiting period before you can access a distracting site. This helps break impulsive scrolling habits.', icon: '🧘‍♂️' },
+        'remind-every': { title: 'Reminder Frequency', text: 'How often the extension will show you a "productive check-in" reminding you of your time spent.', icon: '⏳' },
+        'session-limit': { title: 'Site Activity Limit', text: 'Max time allowed for this site. You can choose to reset this timer when you leave the site, or set it as a rolling budget (e.g. 20 minutes per hour).', icon: '🔒' },
+        'reward-time': { title: 'Unlock Reward', text: 'The number of minutes granted after successfully completing an unlock protocol.', icon: '🍏' },
+        'passive-reward': { title: 'Passive Reward', text: 'Earn bonus reward time just by spending time on your allowlist "productive" sites. This time can be used to unlock your restricted sites later.', icon: '🧠' },
+        'browser-screen-time': { title: 'Browser Screen Time', text: 'Total time you can use the browser per day across all sites.', icon: '🌐' },
+        'session-allowance': { title: 'Launch Count', text: 'This budget limits how many times you can enter a blocked site within a rolling window (e.g. 3 launches per hour). A session ends as soon as you stop using the site for 2 minutes.', icon: '🚀' },
+        'typing': { title: 'Typing Challenge', text: 'Requires you to type a long quote perfectly to unlock the site.', icon: '⌨️' },
+        'password': { title: 'Password Protection', text: 'Requires a pre-set password to unlock. Ideal for accountability partners.', icon: '🔑' },
+        'delay': { title: 'Time Delay', text: 'Forces you to wait for several minutes after initiating an unlock before access is granted.', icon: '🕒' },
+        'none-mode': { title: 'No Unlocking', text: 'The strictest mode. Once locked, there is no way to unlock until the next day.', icon: '⛔' },
+        'session-timeout': { title: 'Session Timeout', text: 'If you leave a site for this long, your "Session Timer" will reset back to 0. Great for taking short breaks without being permanently locked.', icon: '🔄' }
+    };
+
+    document.querySelectorAll('.help-icon').forEach(icon => {
+        icon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const key = icon.dataset.help;
+            const content = helpContent[key];
+            if (content && helpModal) {
+                helpModalIcon.textContent = content.icon;
+                helpModalTitle.textContent = content.title;
+                helpModalText.textContent = content.text;
+                helpModal.style.display = 'block';
+            }
+        });
+    });
+
+    if (helpModalClose) {
+        helpModalClose.onclick = () => { helpModal.style.display = 'none'; };
+    }
+    if (helpModal) {
+        helpModal.onclick = (e) => { if (e.target === helpModal) helpModal.style.display = 'none'; };
+    }
+
+    // --- UI LOGIC HAS BEEN MOVED TO GLOBAL SCOPE ---
+    // See updateUIState() below
+
+
+    function updateTypingEffectiveness() {
+        const words = parseInt(document.getElementById('challenge-length-input').value) || 0;
+        const fill = document.getElementById('typing-effectiveness-fill');
+        const text = document.getElementById('typing-effectiveness-text');
+
+        if (!fill || !text) return;
+
+        let pct, label, color;
+        if (words < 30) {
+            pct = Math.min(words / 30 * 33, 33);
+            label = '⚠️ Too easy - not an effective barrier';
+            color = '#FF3B30';
+        } else if (words < 60) {
+            pct = 33 + ((words - 30) / 30 * 33);
+            label = '🟡 Moderate deterrent';
+            color = '#FF9500';
+        } else if (words < 80) {
+            pct = 66 + ((words - 60) / 20 * 34);
+            label = '✅ Good friction';
+            color = '#34C759';
+        } else {
+            pct = 100;
+            label = '💪 Strong barrier - highly effective';
+            color = '#34C759';
+        }
+
+        if (fill) {
+            fill.style.width = `${pct}%`;
+            fill.style.background = color;
+        }
+        if (text) {
+            text.textContent = label;
+            text.style.color = color;
+        }
+    }
+
+    // --- PASSWORD STRENGTH & MATCH ---
+    function setupPasswordLogic() {
+        const passInput = document.getElementById('proto-password-val');
+        const confirmInput = document.getElementById('proto-password-confirm');
+        const strengthFill = document.getElementById('password-strength-fill');
+        const strengthText = document.getElementById('password-strength-text');
+        const matchStatus = document.getElementById('password-match-status');
+        const generateBtn = document.getElementById('generate-password-btn');
+
+        if (!passInput) return;
+
+        const showPassChk = document.getElementById('show-password-chk');
+        if (showPassChk) {
+            showPassChk.onchange = () => {
+                const type = showPassChk.checked ? 'text' : 'password';
+                passInput.type = type;
+                if (confirmInput) confirmInput.type = type;
+            };
+        }
+
+        passInput.oninput = () => {
+            const val = passInput.value;
+            if (strengthFill) strengthFill.className = 'strength-fill';
+
+            if (val.length === 0) {
+                if (strengthText) strengthText.textContent = 'Enter a password';
+            } else if (val.length < 6) {
+                if (strengthFill) strengthFill.classList.add('weak');
+                if (strengthText) strengthText.textContent = 'Weak';
+            } else if (val.length < 10 || !/[A-Z]/.test(val) || !/[0-9]/.test(val)) {
+                if (strengthFill) strengthFill.classList.add('medium');
+                if (strengthText) strengthText.textContent = 'Medium';
+            } else {
+                if (strengthFill) strengthFill.classList.add('strong');
+                if (strengthText) strengthText.textContent = 'Strong';
+            }
+            checkMatch();
+        };
+
+        if (confirmInput) {
+            confirmInput.oninput = checkMatch;
+        }
+
+        function checkMatch() {
+            if (!matchStatus) return;
+            const p1 = passInput.value;
+            const p2 = confirmInput ? confirmInput.value : '';
+
+            if (!p1 || !p2) {
+                matchStatus.textContent = '';
+                return;
+            }
+
+            if (p1 === p2) {
+                matchStatus.textContent = '✅ Passwords match';
+                matchStatus.style.color = '#34C759';
+            } else {
+                matchStatus.textContent = '❌ Passwords do not match';
+                matchStatus.style.color = '#FF3B30';
+            }
+        }
+
+        if (generateBtn) {
+            generateBtn.onclick = () => {
+                const p1 = passInput.value;
+                const p2 = confirmInput ? confirmInput.value : '';
+                if (!p1) {
+                    alert('Please enter a password');
+                    return;
+                }
+                if (p1 !== p2) {
+                    alert('Passwords do not match!');
+                } else {
+                    // Switch to active state immediately
+                    const setupState = document.getElementById('password-setup-state');
+                    const activeState = document.getElementById('password-active-state');
+                    const cancelBtn = document.getElementById('cancel-password-setup-btn');
+
+                    if (setupState) setupState.style.display = 'none';
+                    if (activeState) activeState.style.display = 'block';
+                    if (cancelBtn) cancelBtn.style.display = 'block';
+
+                    // Feedback is now visual, but we can add a small status message if needed.
+                    // For now, simple transition is what was requested.
+                }
+            };
+        }
+    }
+
+    setupPasswordLogic();
+
+    // Logic moved global
+
+
+    function forceDisable(id, disabled) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.disabled = disabled;
+            el.parentElement.style.opacity = disabled ? '0.5' : '1';
+        }
+    }
+
+    function hide(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('disabled');
+    }
+
+    // Listeners for UI state (non-None toggles)
+    ['proto-typing-enable', 'proto-password-enable', 'proto-delay-enable', 'proto-passive-enable'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', (e) => {
+            updateUIState();
+            // showSavedIndicator removed to avoid redundancy
+        });
+    });
+    document.getElementById('challenge-length-input')?.addEventListener('input', () => {
+        updateTypingEffectiveness();
+    });
+
+    // --- TRIGGER TOGGLES ---
+    ['trigger-session-enable', 'trigger-browser-enable', 'trigger-launch-enable'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', (e) => {
+            updateUIState();
+            // showSavedIndicator removed to avoid redundancy
+        });
+    });
+
+    // --- GENERAL TOGGLES ---
+    document.getElementById('pill-enable-input')?.addEventListener('change', (e) => {
+        updateUIState();
+        // showSavedIndicator removed to avoid redundancy
+    });
+
+    // --- REAL-TIME VALIDATION ---
+    function runLiveValidation() {
+        const validation = validateSettings();
+        const saveBtn = document.getElementById('save-difficulty-btn');
+
+        if (!validation.valid) {
+            showValidationWarning('<strong>⛔ Invalid:</strong> ' + validation.errors.join('<br>'));
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.style.opacity = '0.5';
+                saveBtn.style.cursor = 'not-allowed';
+            }
+        } else if (validation.warnings.length > 0) {
+            showValidationWarning('⚠️ ' + validation.warnings.join('<br>'));
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.style.opacity = '1';
+                saveBtn.style.cursor = 'pointer';
+            }
+        } else {
+            hideValidationWarning();
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.style.opacity = '1';
+                saveBtn.style.cursor = 'pointer';
+            }
+        }
+    }
+
+    // Attach live validation to all relevant inputs
+    const validationInputs = [
+        'hardlock-input', 'hardlock-unit', 'session-reset-window',
+        'browser-limit-input', 'browser-limit-unit', 'browser-limit-window',
+        'unlock-reward-input', 'unlock-reward-unit',
+        'trigger-session-enable', 'trigger-browser-enable',
+        'passive-reward-val', 'passive-reward-unit', 'passive-work-val', 'passive-work-unit', 'proto-passive-enable'
+    ];
+
+    validationInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', runLiveValidation);
+            el.addEventListener('input', runLiveValidation);
+        }
+    });
+
+    // --- UNIT GRAMMAR LISTENERS ---
+    const unitPairs = [
+        ['breathing-input', 'breathing-unit'],
+        ['reminder-input', 'reminder-unit'],
+        ['hardlock-input', 'hardlock-unit'],
+        ['browser-limit-input', 'browser-limit-unit'],
+        ['unlock-reward-input', 'unlock-reward-unit'],
+        ['proto-delay-val', 'proto-delay-unit'],
+        ['launch-limit-input', 'launch-limit-label'],
+        ['challenge-length-input', 'challenge-length-label'],
+        ['passive-reward-val', 'passive-reward-unit'],
+        ['passive-work-val', 'passive-work-unit']
+    ];
+
+    unitPairs.forEach(([inputId, unitId]) => {
+        const input = document.getElementById(inputId);
+        const unit = document.getElementById(unitId);
+        if (input) {
+            input.addEventListener('input', () => updateUnitGrammar(inputId, unitId));
+        }
+        if (unit && unit.tagName === 'SELECT') {
+            unit.addEventListener('change', () => updateUnitGrammar(inputId, unitId));
+        }
+    });
+
+    window.refreshAllGrammar = () => {
+        unitPairs.forEach(([inputId, unitId]) => updateUnitGrammar(inputId, unitId));
+    };
+
+    // --- NONE MODE CONFIRMATION ---
+    const noneToggle = document.getElementById('proto-godmode-enable');
+    const noneModal = document.getElementById('none-confirm-modal');
+    const noneCancel = document.getElementById('none-cancel-btn');
+    const noneConfirm = document.getElementById('none-confirm-btn');
+
+    if (noneToggle && noneModal) {
+        noneToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                // Show confirmation modal
+                e.target.checked = false; // Revert immediately
+                noneModal.style.display = 'block';
+            } else {
+                updateUIState();
+            }
+        });
+
+        noneCancel.onclick = () => {
+            noneModal.style.display = 'none';
+        };
+
+        noneConfirm.onclick = () => {
+            noneToggle.checked = true;
+            noneModal.style.display = 'none';
+            updateUIState();
+        };
+    }
+
+
+    // --- MANUAL SAVE (Adv. Protocols) ---
+    const saveProtoBtn = document.getElementById('save-difficulty-btn');
+    if (saveProtoBtn) {
+        saveProtoBtn.addEventListener('click', () => {
+            currentSettings.unlockReward = Math.ceil(getConvertedVal('unlock-reward-input', 'unlock-reward-unit') / 60) || 5;
+
+            currentSettings.hardLockTriggers = {
+                sessionLimit: {
+                    enabled: document.getElementById('trigger-session-enable').checked,
+                    value: Math.floor(getConvertedVal('hardlock-input', 'hardlock-unit') / 60) || 30,
+                    windowSeconds: parseInt(document.getElementById('session-reset-window').value) || 0
+                },
+                browserLimit: {
+                    enabled: document.getElementById('trigger-browser-enable').checked,
+                    value: Math.floor(getConvertedVal('browser-limit-input', 'browser-limit-unit') / 60) || 480,
+                    windowSeconds: parseInt(document.getElementById('browser-limit-window').value) || 86400
+                },
+                launchLimit: {
+                    enabled: document.getElementById('trigger-launch-enable').checked,
+                    value: parseInt(document.getElementById('launch-limit-input').value) || 3,
+                    windowSeconds: parseInt(document.getElementById('launch-limit-window').value) || 3600
+                }
+            };
+
+            currentSettings.unlockRewardType = document.getElementById('unlock-reward-unit').value;
+
+            // Password Validation
+            const passEnabled = document.getElementById('proto-password-enable').checked;
+            const p1 = document.getElementById('proto-password-val').value;
+            const p2 = document.getElementById('proto-password-confirm').value;
+
+            if (passEnabled) {
+                if (!p1) {
+                    alert('Please enter a password');
+                    return;
+                }
+                if (p1 !== p2) {
+                    alert('Passwords do not match!');
+                    return;
+                }
+            }
+
+            // Maintain legacy field for compatibility
+            currentSettings.hardLockDuration = currentSettings.hardLockTriggers.sessionLimit.value;
+
+            // Construct Protocols Object
+            currentSettings.unlockProtocols = {
+                typing: {
+                    enabled: document.getElementById('proto-typing-enable').checked,
+                    difficulty: parseInt(document.getElementById('challenge-length-input').value) || 50
+                },
+                password: {
+                    enabled: document.getElementById('proto-password-enable').checked,
+                    value: document.getElementById('proto-password-val').value || currentSettings.unlockProtocols.password.value // Keep old password if input empty
+                },
+                delay: {
+                    enabled: document.getElementById('proto-delay-enable').checked,
+                    duration: Math.ceil(getConvertedVal('proto-delay-val', 'proto-delay-unit') / 60) || 5
+                },
+                godMode: document.getElementById('proto-godmode-enable').checked
+            };
+
+            currentSettings.passiveReward = {
+                enabled: document.getElementById('proto-passive-enable').checked,
+                reward: getConvertedVal('passive-reward-val', 'passive-reward-unit') || 300,
+                threshold: getConvertedVal('passive-work-val', 'passive-work-unit') || 1800
+            };
+
+            // SAFEGUARD #6: If ALL protocols are disabled (and not None Mode), force-enable Typing
+            const p = currentSettings.unlockProtocols;
+            const noProtocolsEnabled = !p.typing.enabled && !p.password.enabled && !p.delay.enabled && !p.godMode;
+            if (noProtocolsEnabled) {
+                currentSettings.unlockProtocols.typing.enabled = true;
+                document.getElementById('proto-typing-enable').checked = true;
+                if (window.triggerProtocolUIUpdate) window.triggerProtocolUIUpdate();
+            }
+
+            // SAFEGUARD #8: Enforce minimum 1 minute unlock reward
+            if (currentSettings.unlockReward < 1) {
+                currentSettings.unlockReward = 1;
+            }
+
+            // Sync legacy field
+            currentSettings.typingDifficulty = currentSettings.unlockProtocols.typing.difficulty;
+
+            // VALIDATION CHECK
+            const validation = validateSettings();
+
+            if (!validation.valid) {
+                // Block save - show errors
+                showValidationWarning('<strong>Cannot save:</strong><br>' + validation.errors.join('<br>'));
+                return;
+            }
+
+            if (validation.warnings.length > 0) {
+                // Show warnings but allow save
+                showValidationWarning(validation.warnings.join('<br>'));
+            } else {
+                hideValidationWarning();
+            }
+
+            saveSettings();
+            showSavedIndicator();
+            // Immediate navigate back for responsive feel
+            const backBtn = document.querySelector('.nav-back');
+            if (backBtn) backBtn.click();
+        });
+    }
+
+    // --- MANUAL SAVE (General Timers) ---
+    const saveTimersBtn = document.getElementById('save-timers-btn');
+    if (saveTimersBtn) {
+        saveTimersBtn.addEventListener('click', () => {
+            currentSettings.breathingRoomDuration = getConvertedVal('breathing-input', 'breathing-unit') || 15;
+            currentSettings.reminderInterval = Math.ceil(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 15;
+            currentSettings.reminderStyle = document.getElementById('reminder-style-input').value;
+            currentSettings.soundEnabled = document.getElementById('sound-input').checked;
+            currentSettings.showTimerPill = document.getElementById('pill-enable-input').checked;
+            currentSettings.showPillOnWhitelist = document.getElementById('pill-whitelist-input').checked;
+            currentSettings.whitelistShortcuts = document.getElementById('whitelist-shortcuts-input').checked;
+            currentSettings.breathingFreq = document.getElementById('breathing-freq').value;
+            saveSettings();
+            showSavedIndicator();
+            document.querySelector('.nav-back').click();
+        });
+    }
+
+    // --- ADD/REMOVE ITEMS ---
+    const addSiteBtn = document.getElementById('add-site-btn');
+    if (addSiteBtn) {
+        addSiteBtn.addEventListener('click', () => {
+            let v = document.getElementById('new-site-input').value.trim().toLowerCase();
+            if (!v) return;
+
+            // Basic Sanitization: Strip protocol and path
+            try {
+                if (v.includes('://')) v = v.split('://')[1];
+                v = v.split('/')[0];
+                v = v.replace(/^www\./, '');
+            } catch (e) { }
+
+            if (v && !currentSettings.whitelist.includes(v)) {
+                currentSettings.whitelist.push(v);
+                saveSettings();
+                renderWhitelist();
+                document.getElementById('new-site-input').value = '';
+            }
+        });
+    }
+
+    const addShortcutBtn = document.getElementById('add-shortcut-btn');
+    if (addShortcutBtn) {
+        addShortcutBtn.addEventListener('click', () => {
+            if ((currentSettings.shortcuts || []).length >= 6) {
+                alert("You can't do that. The max is 6 shortcut apps");
+                return;
+            }
+            const n = document.getElementById('new-shortcut-name').value.trim();
+            const u = document.getElementById('new-shortcut-url').value.trim();
+            if (n && u) {
+                currentSettings.shortcuts.push({ name: n, url: u });
+                saveSettings();
+                renderShortcuts();
+                document.getElementById('new-shortcut-name').value = '';
+                document.getElementById('new-shortcut-url').value = '';
+            }
+        });
+    }
+
+    // Delete Delegation
+    document.body.addEventListener('click', (e) => {
+        if (e.target.dataset.type) {
+            const idx = parseInt(e.target.dataset.index);
+            if (e.target.dataset.type === 'whitelist') currentSettings.whitelist.splice(idx, 1);
+            if (e.target.dataset.type === 'blacklist') currentSettings.blacklist.splice(idx, 1);
+            if (e.target.dataset.type === 'shortcut') currentSettings.shortcuts.splice(idx, 1);
+            saveSettings();
+            renderAll();
+        }
+    });
+
+    // Make updateUIState global-ish or accessible if needed, but it's bound to listeners.
+    // We attach it to DOM now so it runs on init in populate.
+    window.triggerProtocolUIUpdate = updateUIState;
+
+    // Handle Password Dual-State
+    const updateBtn = document.getElementById('toggle-password-setup-btn');
+    const cancelBtn = document.getElementById('cancel-password-setup-btn');
+    const setupState = document.getElementById('password-setup-state');
+    const activeState = document.getElementById('password-active-state');
+
+    if (updateBtn) {
+        updateBtn.addEventListener('click', () => {
+            if (setupState) setupState.style.display = 'block';
+            if (activeState) activeState.style.display = 'none';
+        });
+    }
+
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            if (setupState) setupState.style.display = 'none';
+            if (activeState) activeState.style.display = 'block';
+        });
+    }
+
+    // --- DEVELOPER/TEST BUTTONS ---
+    const debugActions = {
+        'test-hardlock-btn': 'forceHardLock',
+        'test-reminder-btn': 'forceReminder',
+        'test-pause-btn': 'forceBreathing'
+    };
+
+    Object.keys(debugActions).forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener('click', () => {
+                showSavedIndicator('Triggering...');
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (tabs[0]?.id) {
+                        chrome.tabs.sendMessage(tabs[0].id, { 
+                            action: 'debugTrigger', 
+                            type: debugActions[id] 
+                        }).catch(err => {
+                            console.error('[Cure] Debug trigger failed:', err);
+                        });
+                    }
+                });
+            });
+        }
+    });
+
+    // Force initial UI update now that listeners are set
+    updateUIState();
+}
+
+function showSavedIndicator(text = 'Saved ✓') {
+    const el = document.getElementById('save-status');
+    if (el) {
+        el.textContent = text;
+        el.classList.add('show');
+        setTimeout(() => { el.classList.remove('show'); }, 2000);
+    }
+}
+
+
+// Override populate to fill new fields
+const _pop = populateInputs;
+populateInputs = function () {
+    _pop(); // Run original basic population
+
+    if (currentSettings.breathingFreq) {
+        document.getElementById('breathing-freq').value = currentSettings.breathingFreq;
+    }
+
+    // Fill Protocols
+    const p = currentSettings.unlockProtocols || { typing: { enabled: true, difficulty: 50 } };
+
+    setChk('proto-typing-enable', p.typing?.enabled);
+    setVal('challenge-length-input', p.typing?.difficulty || 50);
+
+    setChk('proto-password-enable', p.password?.enabled);
+    const activeState = document.getElementById('password-active-state');
+    const setupState = document.getElementById('password-setup-state');
+    const cancelBtn = document.getElementById('cancel-password-setup-btn');
+
+    if (p.password?.value) {
+        if (activeState) activeState.style.display = 'block';
+        if (setupState) setupState.style.display = 'none';
+        if (cancelBtn) cancelBtn.style.display = 'block';
+    } else {
+        if (activeState) activeState.style.display = 'none';
+        if (setupState) setupState.style.display = 'block';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+    }
+
+    setVal('proto-password-val', '');
+    setVal('proto-password-confirm', '');
+
+    setChk('proto-delay-enable', p.delay?.enabled);
+    setVal('proto-delay-val', p.delay?.duration || 5);
+
+    // Unlock Reward Population (Manual to preserve Unit Type)
+    const rewardType = currentSettings.unlockRewardType || 'min';
+    const rewardVal = currentSettings.unlockReward || 5;
+    const urInput = document.getElementById('unlock-reward-input');
+    const urUnit = document.getElementById('unlock-reward-unit');
+
+    if (urInput && urUnit) {
+        urUnit.value = rewardType;
+        // Fallback: If for some reason the above failed (blank dropdown), force 'min'
+        if (!urUnit.value) urUnit.value = 'min';
+
+        if (rewardType === 'hr') {
+            urInput.value = Math.floor(rewardVal / 60) || 1;
+        } else {
+            urInput.value = rewardVal;
+        }
+        updateUnitGrammar('unlock-reward-input', 'unlock-reward-unit');
+    }
+
+    setChk('proto-godmode-enable', p.godMode);
+
+    // Passive Rewards
+    const pr = currentSettings.passiveReward || { enabled: false, reward: 300, threshold: 1800 };
+    setChk('proto-passive-enable', pr.enabled);
+    setConvertedVal('passive-reward-val', 'passive-reward-unit', pr.reward || 300);
+    setConvertedVal('passive-work-val', 'passive-work-unit', pr.threshold || 1800);
+
+    // Trigger UI update AFTER all values are set
+    setTimeout(() => {
+        if (window.refreshAllGrammar) window.refreshAllGrammar();
+        if (window.triggerProtocolUIUpdate) window.triggerProtocolUIUpdate();
+
+    }, 10);
+}
+
+function setChk(id, val) { const el = document.getElementById(id); if (el) el.checked = !!val; }
+function setVal(id, val) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.value = val;
+        // Trigger grammar update if it's a known input
+        const unitPairs = [
+            ['launch-limit-input', 'launch-limit-label'],
+            ['challenge-length-input', 'challenge-length-label']
+        ];
+        const pair = unitPairs.find(p => p[0] === id);
+        if (pair) updateUnitGrammar(pair[0], pair[1]);
+    }
+}
+// --- NEW SAVE LISTENERS ---
+function setupNewViewListeners() {
+    // SAVE PAUSE SETTINGS
+    document.getElementById('save-pause-btn')?.addEventListener('click', () => {
+        currentSettings.breathingRoomDuration = getConvertedVal('breathing-input', 'breathing-unit');
+        currentSettings.breathingFreq = document.getElementById('breathing-freq').value;
+        currentSettings.pauseWhitelist = document.getElementById('pause-whitelist-enable').checked;
+
+        currentSettings.pauseTriggers = {
+            launchLimit: {
+                enabled: document.getElementById('pause-trigger-launch-enable').checked,
+                value: parseInt(document.getElementById('pause-trigger-launch-val').value) || 5,
+                windowSeconds: 3600 // Fixed to 1 hour for simplicity as per UI
+            },
+            browserLimit: {
+                enabled: document.getElementById('pause-trigger-browser-enable').checked,
+                value: parseInt(document.getElementById('pause-trigger-browser-val').value) || 120, // Minutes
+                windowSeconds: 86400 // Daily
+            }
+        };
+
+        saveSettings();
+        showSavedIndicator();
+        const backBtn = document.querySelector('.nav-back');
+        if (backBtn) backBtn.click();
+    });
+
+    // SAVE REMINDERS SETTINGS
+    document.getElementById('save-reminders-btn')?.addEventListener('click', () => {
+        currentSettings.reminderInterval = Math.floor(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 15;
+        currentSettings.reminderStyle = document.getElementById('reminder-style-input').value;
+        currentSettings.reminderWhitelist = document.getElementById('reminder-whitelist-enable').checked;
+
+        currentSettings.reminderTriggers = {
+            launchLimit: {
+                enabled: document.getElementById('reminder-trigger-launch-enable').checked,
+                value: parseInt(document.getElementById('reminder-trigger-launch-val').value) || 5,
+                windowSeconds: 3600
+            },
+            browserLimit: {
+                enabled: document.getElementById('reminder-trigger-browser-enable').checked,
+                value: parseInt(document.getElementById('reminder-trigger-browser-val').value) || 120,
+                windowSeconds: 86400
+            }
+        };
+
+        saveSettings();
+        showSavedIndicator();
+        const backBtn = document.querySelector('.nav-back');
+        if (backBtn) backBtn.click();
+    });
+
+    // DATA & SECURITY LISTENERS
+    // Export
+    document.getElementById('export-settings-btn')?.addEventListener('click', () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentSettings, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "cure_settings_" + new Date().toISOString().slice(0, 10) + ".json");
+        document.body.appendChild(downloadAnchorNode); // required for firefox
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    });
+
+    // Import Trigger
+    document.getElementById('import-settings-btn')?.addEventListener('click', () => {
+        document.getElementById('import-file-input').click();
+    });
+
+    // Import Handler
+    document.getElementById('import-file-input')?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const imported = JSON.parse(e.target.result);
+                // Basic validation: check for key properties
+                if (imported.whitelist && imported.hardLockTriggers) {
+                    currentSettings = imported;
+                    saveSettings();
+                    alert('Settings imported successfully! Reloading...');
+                    window.location.reload();
+                } else {
+                    alert('Invalid settings file.');
+                }
+            } catch (err) {
+                alert('Error parsing file: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    });
+
+
+    // Listeners for new toggles to update UI state
+    ['pause-trigger-launch-enable', 'pause-trigger-browser-enable', 'reminder-trigger-launch-enable', 'reminder-trigger-browser-enable'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', (e) => {
+            if (window.triggerProtocolUIUpdate) window.triggerProtocolUIUpdate();
+            // showSavedIndicator removed to avoid redundancy
+        });
+    });
+
+    // CONSISTENT SAVE BUTTONS FOR NEW VIEWS
+    ['save-whitelist-btn', 'save-shortcuts-btn', 'save-blocklist-btn'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', () => {
+            saveSettings();
+            showSavedIndicator();
+        });
+    });
+}
+
+
+
+// --- GLOBAL UI FUNCTIONS ---
+
+function updateUIState() {
+    // Toggle Sub-Configs based on switches
+    toggleSub('proto-typing-enable', 'config-typing');
+    toggleSub('proto-password-enable', 'config-password');
+    toggleSub('proto-delay-enable', 'config-delay');
+    toggleSub('proto-godmode-enable', 'config-godmode');
+    toggleSub('proto-passive-enable', 'config-passive');
+
+    // New Triggers
+    toggleSub('trigger-session-enable', 'config-trigger-session');
+    toggleSub('trigger-browser-enable', 'config-browser-limit');
+    toggleSub('trigger-launch-enable', 'config-launch-limit');
+
+    // Pause Triggers
+    toggleSub('pause-trigger-launch-enable', 'config-pause-trigger-launch');
+    toggleSub('pause-trigger-browser-enable', 'config-pause-trigger-browser');
+    // Reminders Triggers
+    toggleSub('reminder-trigger-browser-enable', 'config-reminder-trigger-browser');
+    toggleSub('reminder-trigger-launch-enable', 'config-reminder-trigger-launch');
+
+    // None Mode Logic
+    const noneMode = document.getElementById('proto-godmode-enable')?.checked;
+
+    // Safety check for critical elements
+    if (!document.getElementById('proto-godmode-enable')) return;
+
+    if (noneMode) {
+        forceDisable('proto-typing-enable', true);
+        forceDisable('proto-password-enable', true);
+        forceDisable('proto-delay-enable', true);
+
+        toggleSub('proto-typing-enable', 'config-typing');
+        toggleSub('proto-password-enable', 'config-password');
+        toggleSub('proto-delay-enable', 'config-delay');
+    } else {
+        forceDisable('proto-typing-enable', false);
+        forceDisable('proto-password-enable', false);
+        forceDisable('proto-delay-enable', false);
+
+        // Re-check states
+        toggleSub('proto-typing-enable', 'config-typing');
+        toggleSub('proto-password-enable', 'config-password');
+        toggleSub('proto-delay-enable', 'config-delay');
+    }
+
+    // Hide Reward Time if None Mode is ON
+    const rewardContainer = document.getElementById('reward-time-container');
+    if (rewardContainer) {
+        rewardContainer.style.display = noneMode ? 'none' : 'block';
+    }
+
+    // --- TYPING EFFECTIVENESS ---
+    updateTypingEffectiveness();
+
+    // General Pill Sub-config
+    toggleSub('pill-enable-input', 'config-pill-whitelist');
+
+    // --- MASTER SWITCH FADING logic ---
+    if (currentSettings) {
+        applyMasterState('hardlock-config-view', currentSettings.masterHardLock !== false, 'hardlock-disabled-banner');
+        applyMasterState('pause-view', currentSettings.masterPause !== false, 'pause-disabled-banner');
+        applyMasterState('reminders-view', currentSettings.masterReminders !== false, 'reminders-disabled-banner');
+
+        // Dynamic Status Text
+        updateMasterStatusText('hardlock-status-text', currentSettings.masterHardLock !== false, 'strict lock');
+        updateMasterStatusText('pause-status-text', currentSettings.masterPause !== false, 'pause');
+        updateMasterStatusText('reminders-status-text', currentSettings.masterReminders !== false, 'reminders');
+    }
+
+    // GLOBAL SETTINGS LOCK ENFORCEMENT REMOVED - Standard UI update follows
+    if (true) {
+        document.body.style.border = "none";
+        const allInputs = document.querySelectorAll('.popup-container input, .popup-container select, .popup-container button');
+        allInputs.forEach(el => {
+            // Skip re-enabling if we are in a master-disabled view
+            const view = el.closest('.view');
+            if (view) {
+                const isMasterDisabled = (view.id === 'hardlock-config-view' && currentSettings.masterHardLock === false) ||
+                    (view.id === 'pause-view' && currentSettings.masterPause === false) ||
+                    (view.id === 'reminders-view' && currentSettings.masterReminders === false);
+                if (isMasterDisabled) return; // Keep disabled as previously set by applyMasterState
+            }
+
+            el.style.opacity = '';
+            el.style.pointerEvents = '';
+            el.disabled = false;
+        });
+
+        // Re-run standard logic to ensure correct disabled states
+        toggleSub('proto-typing-enable', 'config-typing');
+        toggleSub('proto-password-enable', 'config-password');
+        toggleSub('proto-delay-enable', 'config-delay');
+        toggleSub('proto-godmode-enable', 'config-godmode');
+        toggleSub('proto-passive-enable', 'config-passive');
+        toggleSub('trigger-session-enable', 'config-trigger-session');
+        toggleSub('trigger-browser-enable', 'config-browser-limit');
+        toggleSub('trigger-launch-enable', 'config-launch-limit');
+        toggleSub('pause-trigger-launch-enable', 'config-pause-trigger-launch');
+        toggleSub('pause-trigger-browser-enable', 'config-pause-trigger-browser');
+        toggleSub('reminder-trigger-browser-enable', 'config-reminder-trigger-browser');
+        toggleSub('reminder-trigger-launch-enable', 'config-reminder-trigger-launch');
+    }
+}
+
+function toggleSub(chkId, divId) {
+    const chk = document.getElementById(chkId);
+    const div = document.getElementById(divId);
+    if (chk && div) {
+        const isDisabled = !chk.checked || chk.disabled;
+        if (isDisabled) div.classList.add('disabled');
+        else div.classList.remove('disabled');
+
+        const children = div.querySelectorAll('input, select, button');
+        children.forEach(child => {
+            child.disabled = isDisabled;
+        });
+    }
+}
+
+function applyMasterState(containerId, isEnabled, bannerId) {
+    const view = document.getElementById(containerId);
+    if (!view) return;
+
+    const scrollable = view.querySelector('.scrollable-content');
+    const banner = document.getElementById(bannerId);
+    const footer = view.querySelector('.fixed-footer');
+
+    if (!isEnabled) {
+        if (scrollable) {
+            scrollable.style.opacity = '0.5';
+            scrollable.style.filter = 'grayscale(1)';
+            scrollable.style.pointerEvents = ''; // Ensure scrolling works
+        }
+        if (banner) {
+            // No longer hiding the banner, it's the control row now
+            banner.classList.add('is-disabled');
+        }
+
+        // STRICT DISABLE: Disable all interactive elements in this view
+        const inputs = view.querySelectorAll('input, select, button');
+        inputs.forEach(el => {
+            if (el.classList.contains('nav-back') || el.id.startsWith('inner-master-')) return;
+            el.disabled = true;
+            el.style.opacity = '0.5';
+        });
+    } else {
+        if (scrollable) {
+            scrollable.style.opacity = '1';
+            scrollable.style.filter = 'none';
+            scrollable.style.pointerEvents = '';
+        }
+        if (banner) {
+            banner.classList.remove('is-disabled');
+        }
+
+        // Re-enable footer buttons at least
+        if (footer) {
+            const btns = footer.querySelectorAll('button');
+            btns.forEach(b => {
+                b.disabled = false;
+                b.style.opacity = '1';
+            });
+        }
+    }
+}
+
+function updateMasterStatusText(id, isEnabled, featureName) {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    // Feature names for specialized grammar
+    const displayNames = {
+        'strict lock': 'Strict Lock is',
+        'pause': 'Pause is',
+        'reminders': 'Reminders are'
+    };
+    const prefix = displayNames[featureName] || `${featureName} is`;
+    const emoji = isEnabled ? '🔒' : '🔓';
+
+    if (isEnabled) {
+        el.innerHTML = `<span style="margin-right:8px">${emoji}</span> ${prefix} Enabled`;
+    } else {
+        el.innerHTML = `<span style="margin-right:8px">${emoji}</span> ${prefix} Disabled`;
+    }
+}
+
+function forceDisable(id, disable) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.disabled = disable;
+        if (disable) el.checked = false;
+    }
+}
+
+
+function updateTypingEffectiveness() {
+    const input = document.getElementById('challenge-length-input');
+    if (!input) return; // Guard
+    const words = parseInt(input.value) || 0;
+    const fill = document.getElementById('typing-effectiveness-fill');
+    const text = document.getElementById('typing-effectiveness-text');
+
+    if (!fill || !text) return;
+
+    let pct, label, color;
+    if (words < 30) {
+        pct = Math.min(words / 30 * 33, 33);
+        label = '⚠️ Too easy';
+        color = '#FF3B30';
+    } else if (words < 60) {
+        pct = 33 + ((words - 30) / 30 * 33);
+        label = '🟡 Moderate';
+        color = '#FF9500';
+    } else {
+        pct = 66 + ((words - 60) / 20 * 34);
+        label = '✅ Effective';
+        color = '#34C759';
+    }
+
+    fill.style.width = `${pct}%`;
+    fill.style.background = color;
+    text.textContent = label;
+    text.style.color = color;
+}

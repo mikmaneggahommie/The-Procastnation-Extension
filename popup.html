@@ -1,0 +1,1327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cure Procrastination</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        margin: 0;
+        background: #f5f5f7;
+      }
+    </style>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <!-- VIEW: HOME -->
+    <div id="home-view" class="view active popup-container">
+      <div class="popup-header home-header">
+        <div class="brand-title">
+          <span style="font-size: 20px">🧘‍♂️</span> Cure Procrastination
+        </div>
+      </div>
+
+      <div class="scrollable-content">
+        <!-- ACCESS CONTROL -->
+        <div class="settings-section">
+          <div class="section-label">Site Rules</div>
+          <div class="card-group">
+            <!-- Whitelist (Always Allowed) -->
+            <div class="settings-item nav-trigger" data-target="whitelist-view">
+              <div class="item-left">
+                <div
+                  class="item-icon"
+                  style="background: #e8f5e9; color: #34c759"
+                >
+                  ✅
+                </div>
+                <div class="item-text">
+                  <h3>Allowlist</h3>
+                  <p>Never blocked</p>
+                </div>
+              </div>
+              <div class="item-right">›</div>
+            </div>
+
+            <!-- Blocklist -->
+            <div class="settings-item nav-trigger" data-target="blocklist-view">
+              <div class="item-left">
+                <div
+                  class="item-icon"
+                  style="background: #ffebee; color: #ff3b30"
+                >
+                  ⛔
+                </div>
+                <div class="item-text">
+                  <h3>Blocklist</h3>
+                  <p>Restricted access</p>
+                </div>
+              </div>
+              <div class="item-right">›</div>
+            </div>
+
+            <!-- Shortcuts -->
+            <div class="settings-item nav-trigger" data-target="shortcuts-view">
+              <div class="item-left">
+                <div
+                  class="item-icon"
+                  style="background: #e3f2fd; color: #007aff"
+                >
+                  🚀
+                </div>
+                <div class="item-text">
+                  <h3>Shortcuts</h3>
+                  <p>Productive alternatives</p>
+                </div>
+              </div>
+              <div class="item-right">›</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- INTERVENTIONS -->
+        <div class="settings-section">
+          <div class="section-label">Interventions</div>
+          <div class="card-group">
+            <!-- Hard Lock -->
+            <div
+              class="settings-item nav-trigger"
+              data-target="hardlock-config-view"
+            >
+              <div class="item-left">
+                <div
+                  class="item-icon"
+                  style="background: #f2f2f7; color: #86868b"
+                >
+                  🔒
+                </div>
+                <div class="item-text">
+                  <h3>Strict Lock</h3>
+                  <p>Strict access limits</p>
+                </div>
+              </div>
+              <div
+                class="item-right"
+                style="display: flex; align-items: center; gap: 8px"
+              >
+                <label class="switch" style="transform: scale(0.85)">
+                  <input type="checkbox" id="master-hardlock-enable" />
+                  <span class="slider round"></span>
+                </label>
+                ›
+              </div>
+            </div>
+
+            <!-- Pause (Breathing) -->
+            <div class="settings-item nav-trigger" data-target="pause-view">
+              <div class="item-left">
+                <div
+                  class="item-icon"
+                  style="background: #fff3e0; color: #ff9500"
+                >
+                  🧘‍♂️
+                </div>
+                <div class="item-text">
+                  <h3>Pause</h3>
+                  <p>Breathing room & delays</p>
+                </div>
+              </div>
+              <div
+                class="item-right"
+                style="display: flex; align-items: center; gap: 8px"
+              >
+                <label class="switch" style="transform: scale(0.85)">
+                  <input type="checkbox" id="master-pause-enable" />
+                  <span class="slider round"></span>
+                </label>
+                ›
+              </div>
+            </div>
+
+            <!-- Reminders -->
+            <div class="settings-item nav-trigger" data-target="reminders-view">
+              <div class="item-left">
+                <div
+                  class="item-icon"
+                  style="background: #f3e5f5; color: #af52de"
+                >
+                  🔔
+                </div>
+                <div class="item-text">
+                  <h3>Reminders</h3>
+                  <p>Nudges & check-ins</p>
+                </div>
+              </div>
+              <div
+                class="item-right"
+                style="display: flex; align-items: center; gap: 8px"
+              >
+                <label class="switch" style="transform: scale(0.85)">
+                  <input type="checkbox" id="master-reminders-enable" />
+                  <span class="slider round"></span>
+                </label>
+                ›
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SYSTEM -->
+        <div class="settings-section">
+          <div class="section-label">System</div>
+          <div class="card-group">
+            <!-- General/Sound -->
+            <div class="settings-item nav-trigger" data-target="timers-view">
+              <div class="item-left">
+                <div
+                  class="item-icon"
+                  style="background: #f2f2f7; color: #86868b"
+                >
+                  ⚙️
+                </div>
+                <div class="item-text">
+                  <h3>General</h3>
+                  <p>Sound, Timer Pill</p>
+                </div>
+              </div>
+              <div class="item-right">›</div>
+            </div>
+          </div>
+        </div>
+        <!-- DEVELOPER TOOLS (Test Zone) -->
+        <div class="settings-section">
+          <div class="section-label">Test Zone</div>
+          <div class="card-group">
+            <div class="settings-item-group">
+              <div class="settings-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <button id="test-hardlock-btn" class="action-btn" style="width: 100%; text-align: left; padding: 10px; background: #fff; border: 1px solid #e5e5ea; color: #1d1d1f;">
+                   🔒 Trigger Strict Lock
+                </button>
+                <button id="test-reminder-btn" class="action-btn" style="width: 100%; text-align: left; padding: 10px; background: #fff; border: 1px solid #e5e5ea; color: #1d1d1f;">
+                   🔔 Trigger Reminder
+                </button>
+                <button id="test-pause-btn" class="action-btn" style="width: 100%; text-align: left; padding: 10px; background: #fff; border: 1px solid #e5e5ea; color: #1d1d1f;">
+                   🧘‍♂️ Trigger Pause
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: ALWAYS ALLOWED (Internal ID kept as whitelist-view for compatibility) -->
+    <div id="whitelist-view" class="view popup-container">
+      <div class="popup-header">
+        <div class="nav-back">‹ Back</div>
+        <div class="brand-title">Allowlist</div>
+      </div>
+      <div class="scrollable-content">
+        <div class="list-controls">
+          <div class="search-wrapper">
+            <input
+              type="search"
+              id="whitelist-search"
+              placeholder="Search allowlist..."
+              class="search-input"
+            />
+          </div>
+
+          <div class="add-card">
+            <div class="section-label" style="padding: 0; margin-bottom: 4px">
+              Add to Allowlist
+            </div>
+            <div class="add-card-row">
+              <input
+                type="text"
+                id="new-site-input"
+                placeholder="example.com"
+                class="clean-input"
+              />
+              <button id="add-site-btn" class="action-btn">Add</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section" style="padding-top: 0">
+          <div class="section-label">Allowlist Sites</div>
+          <div id="whitelist-container" class="card-group"></div>
+        </div>
+      </div>
+      <div class="fixed-footer">
+        <button id="save-whitelist-btn" class="action-btn" style="width: 100%">
+          Save Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: SHORTCUTS -->
+    <div id="shortcuts-view" class="view popup-container">
+      <div class="popup-header">
+        <div class="nav-back">‹ Back</div>
+        <div class="brand-title">Shortcuts</div>
+      </div>
+      <div class="scrollable-content">
+        <div class="list-controls">
+          <div class="search-wrapper">
+            <input
+              type="search"
+              id="shortcuts-search"
+              placeholder="Search shortcuts..."
+              class="search-input"
+            />
+          </div>
+
+          <div class="add-card">
+            <div class="section-label" style="padding: 0; margin-bottom: 4px">
+              Add Shortcut
+            </div>
+            <input
+              type="text"
+              id="new-shortcut-name"
+              placeholder="e.g. YouTube"
+              class="clean-input"
+            />
+            <input
+              type="text"
+              id="new-shortcut-url"
+              placeholder="e.g. https://youtube.com"
+              class="clean-input"
+            />
+            <button
+              id="add-shortcut-btn"
+              class="action-btn"
+              style="width: 100%"
+            >
+              Add Shortcut
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-section" style="padding-top: 0">
+          <div class="section-label">Current Shortcuts</div>
+          <div id="shortcuts-container" class="card-group"></div>
+        </div>
+      </div>
+      <div class="fixed-footer">
+        <button id="save-shortcuts-btn" class="action-btn" style="width: 100%">
+          Save Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: TIMERS (GENERAL) -->
+    <div id="timers-view" class="view popup-container">
+      <div class="popup-header">
+        <div class="nav-back">‹ Back</div>
+        <div class="brand-title">General</div>
+      </div>
+      <div class="scrollable-content">
+        <div class="settings-section">
+          <div class="card-group">
+            <!-- Sound -->
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Sound Effects</h3>
+                  <p>Play alerts</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="sound-input" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Whitelist Shortcuts -->
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Allowlist Shortcuts</h3>
+                  <p>Auto-whitelist your productive alternatives</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="whitelist-shortcuts-input" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Timer UI -->
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Show Timer Pill</h3>
+                  <p>Visible in corner</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="pill-enable-input" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="sub-config" id="config-pill-whitelist">
+                <div class="sentence-row">
+                  Include allowlist sites
+                  <label
+                    class="switch"
+                    style="margin-left: auto; transform: scale(0.8)"
+                  >
+                    <input type="checkbox" id="pill-whitelist-input" />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Export/Import Buttons -->
+            <div class="settings-item-group">
+              <div class="settings-item" style="justify-content: space-between;">
+                <div class="item-text">
+                  <h3>Data Backup</h3>
+                  <p>Export or import settings file</p>
+                </div>
+                <div class="item-right" style="gap: 8px;">
+                  <button
+                    id="export-settings-btn"
+                    style="
+                      background: #f2f2f7;
+                      border: none;
+                      border-radius: 6px;
+                      padding: 6px 12px;
+                      color: #1d1d1f;
+                      font-size: 13px;
+                      font-weight: 600;
+                      cursor: pointer;
+                    "
+                  >
+                    Export
+                  </button>
+                  <button
+                    id="import-settings-btn"
+                    style="
+                      background: #f2f2f7;
+                      border: none;
+                      border-radius: 6px;
+                      padding: 6px 12px;
+                      color: #1d1d1f;
+                      font-size: 13px;
+                      font-weight: 600;
+                      cursor: pointer;
+                    "
+                  >
+                    Import
+                  </button>
+                  <input
+                    type="file"
+                    id="import-file-input"
+                    style="display: none"
+                    accept=".json"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fixed-footer">
+        <button id="save-timers-btn" class="action-btn" style="width: 100%">
+          Save Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: BLOCKLIST -->
+    <div id="blocklist-view" class="view popup-container">
+      <div class="popup-header">
+        <div class="nav-back">‹ Back</div>
+        <div class="brand-title">Blocklist</div>
+      </div>
+      <div class="scrollable-content">
+        <div class="list-controls">
+          <div class="search-wrapper">
+            <input
+              type="search"
+              id="blocklist-search"
+              placeholder="Search blocklist..."
+              class="search-input"
+            />
+          </div>
+
+          <div class="add-card">
+            <div class="section-label" style="padding: 0; margin-bottom: 4px">
+              Add to Blocklist
+            </div>
+            <div class="add-card-row">
+              <input
+                type="text"
+                id="new-block-input"
+                placeholder="example.com"
+                class="clean-input"
+              />
+              <button id="add-block-btn" class="action-btn">Block</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section" style="padding-top: 0">
+          <div id="blocklist-container"></div>
+        </div>
+      </div>
+      <div class="fixed-footer">
+        <button id="save-blocklist-btn" class="action-btn" style="width: 100%">
+          Save Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: HARD LOCK -->
+    <div id="hardlock-config-view" class="view popup-container">
+      <div class="popup-header">
+        <div class="nav-back">‹ Back</div>
+        <div class="brand-title">Strict Lock</div>
+      </div>
+      <div class="scrollable-content">
+        <!-- MASTER CONTROL BANNER (Unified) -->
+        <div id="hardlock-disabled-banner" class="disabled-banner">
+          <span id="hardlock-status-text">Strict Lock is Enabled</span>
+          <label class="switch" style="transform: scale(0.8)">
+            <input type="checkbox" id="inner-master-hardlock" />
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <div
+          id="validation-warning"
+          style="
+            display: none;
+            margin: 16px;
+            background: #fff3cd;
+            border: 1px solid #ffe69c;
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #856404;
+          "
+        >
+          <div style="display: flex; align-items: flex-start; gap: 12px">
+            <span style="font-size: 20px">⚠️</span>
+            <div>
+              <div
+                style="
+                  font-weight: 700;
+                  font-size: 13px;
+                  margin-bottom: 4px;
+                  text-transform: uppercase;
+                "
+              >
+                Configuration Warning
+              </div>
+              <div
+                id="validation-warning-text"
+                style="font-size: 13px; line-height: 1.4"
+              ></div>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="section-label">Activation Methods</div>
+          <div class="card-group">
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Site Activity Limit
+                    <span class="help-icon" data-help="session-limit">?</span>
+                  </h3>
+                  <p>Max time allowed for this site</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="trigger-session-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-trigger-session">
+                <div class="sentence-row">
+                  Limit to
+                  <input
+                    type="number"
+                    id="hardlock-input"
+                    class="config-number-input"
+                    min="1"
+                  />
+                  <select id="hardlock-unit" class="unit-selector">
+                    <option value="min">minutes</option>
+                    <option value="hr">hours</option>
+                    <option value="day">days</option>
+                  </select>
+                  of use per
+                  <select id="session-reset-window" class="dropdown-input">
+                    <option value="1800">30 minutes</option>
+                    <option value="3600">hour</option>
+                    <option value="86400" selected>day</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Launch Count
+                    <span class="help-icon" data-help="session-allowance"
+                      >?</span
+                    >
+                  </h3>
+                  <p>Budget of entries in window</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="trigger-launch-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-launch-limit">
+                <div class="sentence-row">
+                  Allow
+                  <input
+                    type="number"
+                    id="launch-limit-input"
+                    class="config-number-input"
+                    min="1"
+                    value="3"
+                  />
+                  launches every
+                  <select id="launch-limit-window" class="dropdown-input">
+                    <option value="1800">30 minutes</option>
+                    <option value="3600" selected>hour</option>
+                    <option value="86400">day</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Browser Screen Time
+                    <span class="help-icon" data-help="browser-screen-time"
+                      >?</span
+                    >
+                  </h3>
+                  <p>Total time spent browsing today</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="trigger-browser-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-browser-limit">
+                <div class="sentence-row">
+                  Limit to
+                  <input
+                    type="number"
+                    id="browser-limit-input"
+                    class="config-number-input"
+                    min="1"
+                  />
+                  <select id="browser-limit-unit" class="unit-selector">
+                    <option value="min">minutes</option>
+                    <option value="hr">hours</option>
+                    <option value="day">days</option>
+                  </select>
+                  of screen time per
+                  <select id="browser-limit-window" class="dropdown-input">
+                    <option value="3600">hour</option>
+                    <option value="86400" selected>day</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="section-label">Unlock Protocols</div>
+          <div class="card-group">
+            <div class="settings-item-group" id="reward-time-container">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Unlock Reward
+                    <span class="help-icon" data-help="reward-time">?</span>
+                  </h3>
+                  <p>Granted after unlock</p>
+                </div>
+              </div>
+              <div class="sub-config">
+                <div class="sentence-row">
+                  Grant
+                  <input
+                    type="number"
+                    id="unlock-reward-input"
+                    class="config-number-input"
+                    min="1"
+                    value="5"
+                  />
+                  <select id="unlock-reward-unit" class="unit-selector">
+                    <option value="min" selected>minutes</option>
+                    <option value="hr">hours</option>
+                    <option value="session">launches</option>
+                    <option value="unlimited">unlimited access</option>
+                  </select>
+                  for every unlock
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Passive Reward
+                    <span class="help-icon" data-help="passive-reward">?</span>
+                  </h3>
+                  <p>Earn reward time by working</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="proto-passive-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-passive">
+                <div class="sentence-row">
+                  Earn
+                  <input
+                    type="number"
+                    id="passive-reward-val"
+                    class="config-number-input"
+                    min="1"
+                    value="5"
+                  />
+                  <select id="passive-reward-unit" class="unit-selector">
+                    <option value="min">minutes</option>
+                    <option value="hr">hours</option>
+                  </select>
+                  for every
+                  <input
+                    type="number"
+                    id="passive-work-val"
+                    class="config-number-input"
+                    min="1"
+                    value="25"
+                  />
+                  <select id="passive-work-unit" class="unit-selector">
+                    <option value="min">minutes</option>
+                    <option value="hr">hours</option>
+                  </select>
+                  spent on allowlist sites.
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Typing Challenge
+                    <span class="help-icon" data-help="typing">?</span>
+                  </h3>
+                  <p>Type to unlock</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="proto-typing-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-typing">
+                <div class="sentence-row">
+                  Type
+                  <input
+                    type="number"
+                    id="challenge-length-input"
+                    class="config-number-input"
+                    min="10"
+                    max="200"
+                    value="50"
+                  />
+                  <span id="challenge-length-label">words</span> to unlock.
+                </div>
+                <div class="effectiveness-container">
+                  <div class="effectiveness-bar">
+                    <div
+                      id="typing-effectiveness-fill"
+                      class="effectiveness-fill"
+                    ></div>
+                  </div>
+                  <div
+                    id="typing-effectiveness-text"
+                    class="effectiveness-text"
+                  >
+                    Moderate deterrent
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Password
+                    <span class="help-icon" data-help="password">?</span>
+                  </h3>
+                  <p>Secret key required</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="proto-password-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-password">
+                <div
+                  id="password-active-state"
+                  style="
+                    display: none;
+                    padding: 12px;
+                    background: rgba(52, 199, 89, 0.05);
+                    border-radius: 12px;
+                    border: 1px solid rgba(52, 199, 89, 0.2);
+                    margin-bottom: 8px;
+                  "
+                >
+                  <div style="display: flex; align-items: center; gap: 8px">
+                    <span style="font-size: 18px">✅</span>
+                    <div>
+                      <div
+                        style="
+                          font-size: 14px;
+                          font-weight: 600;
+                          color: #1d1d1f;
+                        "
+                      >
+                        Password Protection Active
+                      </div>
+                      <div style="font-size: 12px; color: #666">
+                        Site is securely locked.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    id="toggle-password-setup-btn"
+                    class="action-btn"
+                    style="
+                      margin-top: 12px;
+                      height: 36px;
+                      font-size: 13px;
+                      background: #f2f2f7;
+                      color: #1d1d1f;
+                      border: 1px solid #e5e5ea;
+                    "
+                  >
+                    Update Password
+                  </button>
+                </div>
+                <div id="password-setup-state">
+                  <input
+                    type="password"
+                    id="proto-password-val"
+                    placeholder="Create password..."
+                    class="config-input"
+                  />
+                  <input
+                    type="password"
+                    id="proto-password-confirm"
+                    placeholder="Confirm password..."
+                    class="config-input"
+                    style="margin-top: 8px"
+                  />
+                  <div
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      margin-top: 8px;
+                      padding-left: 4px;
+                    "
+                  >
+                    <input
+                      type="checkbox"
+                      id="show-password-chk"
+                      style="width: 14px; height: 14px; cursor: pointer"
+                    />
+                    <label
+                      for="show-password-chk"
+                      style="font-size: 12px; color: #666; cursor: pointer"
+                      >Show Passwords</label
+                    >
+                  </div>
+                  <div
+                    id="password-match-status"
+                    class="match-status"
+                    style="margin-top: 8px; padding-left: 4px"
+                  ></div>
+                  <div style="display: flex; gap: 8px; margin-top: 12px">
+                    <button
+                      type="button"
+                      id="generate-password-btn"
+                      class="action-btn"
+                      style="flex: 1; height: 40px; font-size: 14px"
+                    >
+                      Confirm Password
+                    </button>
+                    <button
+                      type="button"
+                      id="cancel-password-setup-btn"
+                      class="action-btn"
+                      style="
+                        display: none;
+                        width: 80px;
+                        height: 40px;
+                        font-size: 14px;
+                        background: #f2f2f7;
+                        color: #1d1d1f;
+                        border: 1px solid #e5e5ea;
+                      "
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    Time Delay
+                    <span class="help-icon" data-help="delay">?</span>
+                  </h3>
+                  <p>Wait before access</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="proto-delay-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-delay">
+                <div class="sentence-row">
+                  Wait for
+                  <input
+                    type="number"
+                    id="proto-delay-val"
+                    class="config-number-input"
+                    min="1"
+                    value="5"
+                  />
+                  <select id="proto-delay-unit" class="unit-selector">
+                    <option value="min">minutes</option>
+                    <option value="hr">hours</option>
+                    <option value="day">days</option>
+                  </select>
+                  to unlock.
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>
+                    None <span class="help-icon" data-help="none-mode">?</span>
+                  </h3>
+                  <p>No unlocking allowed</p>
+                </div>
+                <label class="switch"
+                  ><input type="checkbox" id="proto-godmode-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-godmode">
+                <div style="font-size: 11px; color: #ff3b30; font-weight: 600">
+                  ⛔ Completely locked until reset.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fixed-footer">
+        <button
+            id="save-difficulty-btn"
+            class="action-btn"
+            style="width: 100%"
+          >
+            Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: PAUSE -->
+    <div id="pause-view" class="view popup-container">
+      <div class="popup-header">
+        <div class="nav-back">‹ Back</div>
+        <div class="brand-title">Pause</div>
+      </div>
+      <div class="scrollable-content">
+        <!-- MASTER CONTROL BANNER (Unified) -->
+        <div id="pause-disabled-banner" class="disabled-banner">
+          <span id="pause-status-text">Pause is Enabled</span>
+          <label class="switch" style="transform: scale(0.8)">
+            <input type="checkbox" id="inner-master-pause" />
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <div class="settings-section">
+          <div class="card-group">
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Pause Duration</h3>
+                  <p>Wait before access</p>
+                </div>
+              </div>
+              <div class="sub-config">
+                <div class="sentence-row">
+                  Show for
+                  <input
+                    type="number"
+                    id="breathing-input"
+                    class="config-number-input"
+                  />
+                  <select id="breathing-unit" class="unit-selector">
+                    <option value="sec">seconds</option>
+                    <option value="min">minutes</option>
+                  </select>
+                </div>
+                <div class="sentence-row" style="margin-top: 8px">
+                  Frequency:
+                  <select id="breathing-freq" class="unit-selector">
+                    <option value="always">Always</option>
+                    <option value="first_visit">First Visit</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Launch Count Trigger</h3>
+                  <p>Pause after X visits</p>
+                </div>
+                <label class="switch"
+                  ><input
+                    type="checkbox"
+                    id="pause-trigger-launch-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-pause-trigger-launch">
+                <div class="sentence-row">
+                  Show after
+                  <input
+                    type="number"
+                    id="pause-trigger-launch-val"
+                    class="config-number-input"
+                    value="5"
+                  />
+                  launches per hour.
+                </div>
+              </div>
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Screen Time Trigger</h3>
+                  <p>Pause after browsing duration</p>
+                </div>
+                <label class="switch"
+                  ><input
+                    type="checkbox"
+                    id="pause-trigger-browser-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-pause-trigger-browser">
+                <div class="sentence-row">
+                  Show after
+                  <input
+                    type="number"
+                    id="pause-trigger-browser-val"
+                    class="config-number-input"
+                    value="120"
+                  />
+                  minutes total browsing today.
+                </div>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="item-text">
+                <h3>Enable on Allowlist</h3>
+                <p>Show pause on allowed sites</p>
+              </div>
+              <label class="switch"
+                ><input type="checkbox" id="pause-whitelist-enable" /><span
+                  class="slider round"
+                ></span
+              ></label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fixed-footer">
+        <button id="save-pause-btn" class="action-btn" style="width: 100%">
+          Save Settings
+        </button>
+      </div>
+    </div>
+
+    <!-- VIEW: REMINDERS -->
+    <div id="reminders-view" class="view popup-container">
+      <div class="popup-header">
+        <div class="nav-back">‹ Back</div>
+        <div class="brand-title">Reminders</div>
+      </div>
+      <div class="scrollable-content">
+        <!-- MASTER CONTROL BANNER (Unified) -->
+        <div id="reminders-disabled-banner" class="disabled-banner">
+          <span id="reminders-status-text">Reminders are Enabled</span>
+          <label class="switch" style="transform: scale(0.8)">
+            <input type="checkbox" id="inner-master-reminders" />
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <div class="settings-section">
+          <div class="card-group">
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Interval</h3>
+                  <p>Frequency of alerts</p>
+                </div>
+              </div>
+              <div class="sub-config">
+                <div class="sentence-row">
+                  Remind every
+                  <input
+                    type="number"
+                    id="reminder-input"
+                    class="config-number-input"
+                  />
+                  <select id="reminder-unit" class="unit-selector">
+                    <option value="min">minutes</option>
+                    <option value="hr">hours</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="item-text">
+                <h3>Visual Style</h3>
+                <p>Appearance</p>
+              </div>
+              <select id="reminder-style-input" class="dropdown-input">
+                <option value="overlay">Overlay (Recommended)</option>
+                <option value="toast">Toast Notification</option>
+              </select>
+            </div>
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Screen Time Reminder</h3>
+                  <p>Alert on total browsing time</p>
+                </div>
+                <label class="switch"
+                  ><input
+                    type="checkbox"
+                    id="reminder-trigger-browser-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-reminder-trigger-browser">
+                <div class="sentence-row">
+                  Show after
+                  <input
+                    type="number"
+                    id="reminder-trigger-browser-val"
+                    class="config-number-input"
+                    value="120"
+                  />
+                  minutes total browsing today.
+                </div>
+              </div>
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Launch Count Trigger</h3>
+                  <p>Remind after X visits</p>
+                </div>
+                <label class="switch"
+                  ><input
+                    type="checkbox"
+                    id="reminder-trigger-launch-enable" /><span
+                    class="slider round"
+                  ></span
+                ></label>
+              </div>
+              <div class="sub-config" id="config-reminder-trigger-launch">
+                <div class="sentence-row">
+                  Remind after
+                  <input
+                    type="number"
+                    id="reminder-trigger-launch-val"
+                    class="config-number-input"
+                    value="5"
+                  />
+                  launches per hour.
+                </div>
+              </div>
+            </div>
+            <div class="settings-item">
+              <div class="item-text">
+                <h3>Enable on Allowlist</h3>
+                <p>Show reminders on allowed sites</p>
+              </div>
+              <label class="switch"
+                ><input type="checkbox" id="reminder-whitelist-enable" /><span
+                  class="slider round"
+                ></span
+              ></label>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fixed-footer">
+        <button id="save-reminders-btn" class="action-btn" style="width: 100%">
+          Save Settings
+        </button>
+      </div>
+    </div>
+
+    <div id="save-status">
+      Saved ✓
+    </div>
+
+    <div
+      id="none-confirm-modal"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 9999;
+        backdrop-filter: blur(4px);
+      "
+    >
+      <div
+        style="
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          border-radius: 16px;
+          padding: 24px;
+          width: calc(100% - 48px);
+          max-width: 320px;
+          text-align: center;
+        "
+      >
+        <div style="font-size: 48px; margin-bottom: 12px">⛔</div>
+        <h2 style="margin: 0 0 8px 0; font-size: 20px">Enable "None" Mode?</h2>
+        <p style="margin: 0 0 20px 0; font-size: 14px; color: #86868b">
+          Completely locked out until reset.
+        </p>
+        <div style="display: flex; gap: 12px">
+          <button
+            id="none-cancel-btn"
+            style="
+              flex: 1;
+              padding: 12px;
+              border: 2px solid #e5e5ea;
+              background: white;
+              border-radius: 10px;
+            "
+          >
+            Cancel
+          </button>
+          <button
+            id="none-confirm-btn"
+            style="
+              flex: 1;
+              padding: 12px;
+              border: none;
+              background: #ff3b30;
+              color: white;
+              border-radius: 10px;
+            "
+          >
+            Enable
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="help-modal"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9999;
+        backdrop-filter: blur(2px);
+      "
+    >
+      <div
+        style="
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          border-radius: 14px;
+          padding: 20px;
+          width: calc(100% - 48px);
+          max-width: 300px;
+          text-align: center;
+        "
+      >
+        <div
+          id="help-modal-icon"
+          style="font-size: 36px; margin-bottom: 8px"
+        ></div>
+        <h3
+          id="help-modal-title"
+          style="margin: 0 0 8px 0; font-size: 17px"
+        ></h3>
+        <p
+          id="help-modal-text"
+          style="margin: 0 0 16px 0; font-size: 14px; color: #86868b"
+        ></p>
+        <button
+          id="help-modal-close"
+          style="
+            width: 100%;
+            padding: 12px;
+            background: #1d1d1f;
+            color: white;
+            border-radius: 10px;
+          "
+        >
+          Got it
+        </button>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
