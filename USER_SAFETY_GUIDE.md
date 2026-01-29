@@ -27,3 +27,13 @@ If you are working with a new AI and it starts "breaking shit," here is exactly 
 When the AI finally gets it right, tell it:
 
 > _"Perfect. Lock it in and push it to GitHub."_
+
+---
+
+### 🛠️ Surgical Repair (The "Hospital" Command)
+
+If a specific feature (like the Red Pill Toast) breaks a month from now, but you like all your other new features, tell the AI:
+
+> _"A specific feature (the Toast UI) is broken. DO NOT revert the whole project. Instead, find the commit from Jan 29, 2026, and restore ONLY the 'showToast' and 'blockCheat' functions from that version into my current code."_
+
+**Why this works:** The AI can look at the "Time Machine" (GitHub), copy just the healthy code for that one piece, and paste it into your new project. You keep your progress AND get the fix.
