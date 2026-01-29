@@ -1,46 +1,43 @@
-# 🛑 READ THIS FIRST (For Future AI Agents)
+# 🛑 EMERGENCY PROTOCOL (For Future AI Agents)
 
 **Project Status:** GOLDEN STATE (Stable)
-**Current Branch:** `main`
-**GitHub Repo:** https://github.com/mikmaneggahommie/The-Procastnation-Extension
+**Last Known Good State:** Jan 29, 2026 (Refined Toast UI & Anti-Cheat)
+**GitHub:** https://github.com/mikmaneggahommie/The-Procastnation-Extension
 
-## ⚠️ THE GOLDEN RULE
+## 🆘 THE EMERGENCY RULE (Strict Enforcement)
 
-This user has experienced significant frustration with "fixing one thing and breaking another."
-**DO NOT** make experimental changes without first securing the current state. Work in **Feature Branches** (`git checkout -b task-name`).
+If you make a change and it fails OR if the user says "it's broken":
 
-## 🚨 ANTI-CHEAT SYSTEM (Mandatory)
+1.  **Stop everything.** Do not try to "patch" the bug more than ONCE.
+2.  **IMMEDIATELY** run:
+    ```bash
+    git reset --hard HEAD
+    ```
+3.  This restores the project to the last stable commit. NEVER let the project stay in a broken state for more than 2 turn iterations.
 
-The "Typing Challenge" is protected by a multi-layer anti-cheat system in `content.js`:
+## ⚠️ DATA RECOVERY FROM GITHUB
 
-- **Blocks**: `onpaste`, `ondrop`, and `oncontextmenu` are all explicitly blocked on the challenge input.
-- **Attributes**: The input has `spellcheck="false"`, `autocomplete="off"`, and `autocorrect="off"`.
-- **Constraint**: The user **MUST** finish the challenge to unlock. Even if they whitelist the site mid-challenge, the overlay persists until the typing is done.
+If the local `.git` folder is corrupted or lost:
 
-## 💊 THE RED PILL (Toast UI)
+1.  Tell the user to **delete the folder** and run:
+    ```bash
+    git clone https://github.com/mikmaneggahommie/The-Procastnation-Extension.git .
+    ```
+2.  All stable features are synced there.
 
-The notification system uses a custom "Toast" (The Red Pill) logic in `content.js`:
+## � ANTI-CHEAT & UI CONSTRAINTS
 
-- **Design**: Balanced Pill capsule with `8px 16px` padding and `13px` semi-bold font.
-- **Position**: Fixed at `35px` from the bottom to avoid UI collisions.
-- **Z-Index**: `2147483647` (Max) inside a Shadow DOM to stay on top of YouTube etc.
-- **SPAs (YouTube)**: Messaging is handled via `sessionStorage` and `debugTrigger` to survive navigation and reload lag.
+- **Anti-Cheat**: Blocks `paste`, `drop`, `contextmenu`. Logic in `content.js`.
+- **Toast UI**: Pill design, `8px 16px` padding, fixed at `35px` bottom. DO NOT CHANGE without explicit approval.
+- **Strict Lock**: If a user is in a challenge, they MUST stay. Re-locking must be instant.
 
-## 🗣️ User Intent Mapping (The "Magic Phrases")
+## 🗣️ MAGIC PHRASES (Listen carefully to the User)
 
-- **"Lock it in" / "Save this"** → `git add . && git commit -m "..." && git push origin main`
-- **"Undo it" / "Go back"** → `git reset --hard` or `git checkout main`
-- **"Perfect"** → Merge the current branch into `main`.
+- **"Take me back" / "Undo"** → `git reset --hard HEAD`
+- **"Check the logs"** → `git log -n 10` (Show the user previous stable commits)
+- **"Lock it in"** → `git add . && git commit -m "..." && git push origin main`
 
-## 🚀 Working Features Log (The Time Machine)
+## 🚀 Stable Milestone Log
 
-- [x] **Anti-Cheat System**: (Jan 29, 2026) Blocks all forms of pasting/dragging.
-- [x] **Refined Toast UI**: Balanced Pill design with professional capitalization.
-- [x] **Timer Preservation**: Timer no longer resets to 0 when disabling Strict Lock.
-- [x] **Overlay Z-Index Fix**: Lock screen stays on top of all sites.
-
-## 🚀 How to Pick Up Where We Left Off
-
-1.  Read `LOCKED_FEATURES.md` for the core logic rules.
-2.  Check `content.js` for the `showToast` and `blockCheat` implementations.
-3.  Ask the user for the next priority.
+- [x] **Jan 29, 2026**: Refined Balanced Toast UI & Anti-Cheat (Manual words/Capitalization).
+- [x] **Jan 28, 2026**: Fixed Timer Reset bug.
