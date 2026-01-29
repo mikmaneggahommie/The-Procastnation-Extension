@@ -389,7 +389,7 @@ class CureVault {
 
             if (!this._toastDebounce) {
                 this._toastDebounce = true;
-                this.showToast('⚠️ Progress Reset : stay on tab', 'warning');
+                this.showToast('⚠️ Progress Reset: Stay on Tab', 'warning');
                 setTimeout(() => { this._toastDebounce = false; }, 1000); 
             }
         }
@@ -2853,7 +2853,7 @@ class CureVault {
         // Anti-Cheat: Block Copy/Paste & Drag/Drop
         const blockCheat = (e) => {
             e.preventDefault();
-            this.showToast('No Copy/Paste 🚨', 'error');
+            this.showToast('🚨 No Copy/Paste Allowed', 'error');
         };
         input.onpaste = blockCheat;
         input.ondrop = blockCheat;
