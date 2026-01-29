@@ -341,12 +341,6 @@ class CureVault {
         }
     }
 
-    // =========================================================================
-    // REGRESSION GUARD: TOAST DISMISSAL LOGIC
-    // CRITICAL: Any changes here will break the "Unlock -> Dismiss" flow.
-    // 1. Must handle inline-styled elements (no class checks).
-    // 2. Must be called explicitly in renderTypingLock.
-    // =========================================================================
     dismissToast() {
         if (!this.shadowRoot) return;
         const popout = this.shadowRoot.getElementById('cure-popout-notification');
@@ -356,13 +350,6 @@ class CureVault {
         }
     }
 
-    // =========================================================================
-    // REGRESSION GUARD: RESET TRIGGER LOGIC
-    // CRITICAL: Controls when the Red Pill Toast appears.
-    // 1. Must be guarded against typing challenge (must return if isTypingChallengeActive).
-    // 2. Must clear sessionStorage flags to prevent loops.
-    // 3. Must be called at top of renderDecisionScreen.
-    // =========================================================================
     checkAndShowResetToast() {
         const resetKeySpecific = `cure_needs_reset_${window.location.hostname}`;
         const resetKeyGeneric = 'cure_needs_reset';
@@ -1879,13 +1866,6 @@ class CureVault {
     }
 
     // --- STYLES (SHADOW DOM) ---
-    // =========================================================================
-    // REGRESSION GUARD: VISUAL TOAST RENDERER ("NUCLEAR OPTION")
-    // CRITICAL: Uses inline styles to bypass Shadow DOM isolation issues.
-    // 1. Do NOT move CSS to external file.
-    // 2. Do NOT change z-index (must be max).
-    // 3. Animation keyframes must be injected into Shadow Root.
-    // =========================================================================
     showToast(msg, type = 'info') {
         // FIX 115: Removed isIframe check. 
         const root = this.ensureShadow();
