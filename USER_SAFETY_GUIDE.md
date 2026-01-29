@@ -43,17 +43,5 @@ This is how you manage any AI working on this project. Use these **Magic Phrases
 3.  **You**: You check it. It looks great!
 4.  **You**: "Perfect. Do the github thing."
 5.  **AI**: It records the "Safe Point" in **MILESTONES.md**, moves the fix into your **main** code, and pushes it to GitHub.
-6.  **Next Task**: You ask for the next thing. The AI starts over at Step 1 with a **new** branch.
-
----
-
-### 📖 GitHub Jargon Decoded
-
-| Term         | What it means to You                                                               |
-| :----------- | :--------------------------------------------------------------------------------- |
-| **`main`**   | Your "Real" code. It should always be 100% working.                                |
-| **`Branch`** | A temporary "Test Room." The AI handles the naming for you (e.g. `fix-reminders`). |
-| **`Tag`**    | A "Golden Bookmark." Permanent marker of a stable version.                         |
-| **`Commit`** | A "Save Point" in your history.                                                    |
 
 **You are now the Manager. Everything is backed up and safe!** 🚀🛡️
