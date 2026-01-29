@@ -348,6 +348,10 @@ class CureVault {
     // 2. Must be called explicitly in renderTypingLock.
     // =========================================================================
     dismissToast() {
+        // FIX: Clear local reset flags when user acknowledges/starts over.
+        sessionStorage.removeItem(`cure_needs_reset_${window.location.hostname}`);
+        sessionStorage.removeItem('cure_needs_reset');
+        
         if (!this.shadowRoot) return;
         const popout = this.shadowRoot.getElementById('cure-popout-notification');
         if (popout) {
@@ -369,12 +373,15 @@ class CureVault {
         
         const needsReset = (sessionStorage.getItem(resetKeySpecific) === 'true') || 
                            (sessionStorage.getItem(resetKeyGeneric) === 'true');
-
         
         if (needsReset || this._resetToastPending) {
             if (needsReset) {
-                sessionStorage.removeItem(resetKeySpecific);
-                sessionStorage.removeItem(resetKeyGeneric);
+                // FIX: PERSISTENCE STRATEGY
+                // 1. Do NOT remove specific/generic keys here (Keep Local). 
+                //    This ensures the toast survives page reloads/navigation until dismissed.
+                // 2. DO remove the GLOBAL background flag to prevent 'evaluateAllTriggers' from re-firing.
+                chrome.storage.session.remove('cure_typing_active_global');
+
                 this._resetToastPending = true;
                 setTimeout(() => { this._resetToastPending = false; }, 2000);
             }
@@ -1902,7 +1909,8 @@ class CureVault {
         if (!root.getElementById('cure-pulse-style-final')) {
             const style = document.createElement('style');
             style.id = 'cure-pulse-style-final';
-            style.innerHTML = `
+            // FIX: Trusted Types compatibility (use textContent)
+            style.textContent = `
                 @keyframes cure-pulse-nuclear {
                     0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); transform: translateX(-50%) scale(1); }
                     70% { box-shadow: 0 0 0 20px rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1.05); }
@@ -1936,17 +1944,21 @@ class CureVault {
         `;
 
 
-        // Inner HTML with message and close button
-        popout.innerHTML = `
-            <span>${msg}</span>
-            <button style="background:rgba(255,255,255,0.2); border:none; width:24px; height:24px; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px;">✕</button>
-        `;
+        // Inner HTML replaced with DOM construction for Trusted Types (YouTube Fix)
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = msg;
+        popout.appendChild(msgSpan);
 
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '✕';
+        closeBtn.style.cssText = "background:rgba(255,255,255,0.2); border:none; width:24px; height:24px; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px;";
+        
         // Handle Close Button Click
-        popout.querySelector('button').onclick = () => {
+        closeBtn.onclick = () => {
             popout.style.opacity = '0';
-            setTimeout(() => popout.remove(), 300);
+            setTimeout(() => { if (popout.parentElement) popout.remove(); }, 300);
         };
+        popout.appendChild(closeBtn);
 
         // Fix 113: Always append as last child
         root.appendChild(popout);
@@ -1960,14 +1972,7 @@ class CureVault {
         // User requested it to NOT disappear automatically ("As if I pressed X").
         // It stays until they dismiss it or start typing (which calls dismissToast).
 
-        // Close Handler
-        const closeBtn = popout.querySelector('.cure-popout-close');
-        if (closeBtn) {
-            closeBtn.onclick = () => {
-                popout.classList.remove('show');
-                setTimeout(() => popout.remove(), 400); // Wait for transition
-            };
-        }
+
     }
 
 

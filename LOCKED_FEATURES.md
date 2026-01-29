@@ -23,6 +23,8 @@ This feature is highly sensitive to the browser's rendering lifecycle. It has br
     - **RULE**: The check must happen at the `renderDecisionScreen` entry point.
 3.  **Typing Screen Persistence**: It must disappear _instantly_ when typing starts.
     - **RULE**: `dismissToast()` must be called in `renderTypingLock`.
+4.  **Trusted Types (YouTube)**: innerHTML assignments crash the script on strict sites.
+    - **RULE**: Use `document.createElement` and `textContent` ONLY. No `innerHTML`.
 
 ### 🔒 Implementation Constraints
 
