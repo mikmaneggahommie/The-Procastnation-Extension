@@ -42,4 +42,12 @@ If you want to stop the frustration, you need to use these **Actionable Prompts*
 
 ---
 
+### 👑 The "God-Mode" Opening (The First Thing You Say)
+
+Copy and paste this exact prompt to start any new project perfectly:
+
+> _"I want to build **[Project Name]**. Before we write any code: 1. Initialize Git and set up a 'Golden State' Safety Net (AI_HANDOVER.md with 3-fix rule, and MILESTONES.md). 2. Create a **PLAN.md** with a **Modular File Structure** (tiny files, not one big one). 3. Once I approve the plan, start a new branch for the first task and do not touch 'main' until I say 'Perfect'."_
+
+---
+
 **Summary**: A senior dev spends 50% of their time **organizing** and only 50% **coding**. Use these prompts to make the AI organize the work for you! 🚀🛡️🦾
