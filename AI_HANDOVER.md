@@ -4,10 +4,14 @@
 **Current Stable State:** See [MILESTONES.md](file:///Users/mac2015/Desktop/The%20Procastnation%20Extension/MILESTONES.md)
 **GitHub:** https://github.com/mikmaneggahommie/The-Procastnation-Extension
 
-## 🚀 THE HANDOVER RULE
+## 🚀 THE HANDOVER RULE (MANDATORY AUTOMATION)
 
-1.  **Read [MILESTONES.md](file:///Users/mac2015/Desktop/The%20Procastnation%20Extension/MILESTONES.md)** first. It tracks which commits are "Perfect."
-2.  **Maintain the Log**: Whenever you finish a task and the user is happy, update `MILESTONES.md` with the date, feature, and new commit hash.
+1.  **Read [MILESTONES.md](file:///Users/mac2015/Desktop/The%20Procastnation%20Extension/MILESTONES.md)** first. It is your source of truth for "Perfected" features.
+2.  **AUTO-UPDATE**: When the user says "Lock it in" or "Perfect", you MUST automatically:
+    - Capture the new commit hash.
+    - Update `MILESTONES.md` with the new feature and hash.
+    - Commit this update alongside the code changes.
+      _The user should never have to remind you to log a Milestone._
 
 ## 🆘 THE EMERGENCY RULE (Strict Enforcement)
 
@@ -25,5 +29,5 @@ If you make a change and it fails OR if the user says "it's broken":
 ## 🗣️ MAGIC PHRASES
 
 - **"Take me back" / "Undo"** → `git reset --hard HEAD`
-- **"Check the Milestones"** → Look at `MILESTONES.md`.
-- **"Lock it in"** → `git add . && git commit -m "..." && git push origin main`
+- **"Repair [Feature Name]"** → Find the last stable hash for that feature in `MILESTONES.md` and restore only that code.
+- **"Lock it in"** → `git add . && git commit -m "..." && git push origin main` (Plus the Auto-Update above).
