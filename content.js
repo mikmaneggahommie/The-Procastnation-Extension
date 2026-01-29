@@ -444,6 +444,16 @@ class CureVault {
             // the user almost certainly doesn't want to see a Breathing Room immediately.
             if ((!oldWhitelisted && newWhitelisted) || (oldStrictLock && !newStrictLock)) {
                 this.suppressBreathingRoomOnce = true;
+                
+                // FIX 117: Focus Preservation.
+                // If a Typing Challenge is active, we MUST keep the input focused.
+                // Whitelisting the site shouldn't break the input if the user wants to finish the challenge.
+                if (this.isTypingChallengeActive && this.shadowRoot) {
+                    const input = this.shadowRoot.getElementById('cure-input');
+                    if (input) {
+                        setTimeout(() => input.focus(), 50);
+                    }
+                }
             }
 
             // SYNC UI REFRESH: authoritative flicker-free update
