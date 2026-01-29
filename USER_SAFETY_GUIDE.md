@@ -1,33 +1,45 @@
 # 🛡️ Your Ultimate Safety Guide
 
-This is how you manage any AI working on this project. This system is designed to stop the "Endless Loop of Bugs."
-
-### 📅 The Handover (Start of every New Chat)
-
-**Copy-Paste this:**
-
-> _"Read **AI_HANDOVER.md** and **MILESTONES.md**. Start a new branch for my request and do not modify 'main' until I say 'Perfect'."_
+This is how you manage any AI working on this project. Use these **Magic Phrases** to keep your code safe and stop the "Fix/Break" cycle.
 
 ---
 
-### 🚦 When to say what:
+### 🏁 1. Starting a New Conversation
 
-| If this happens...                   | Say this to the AI:                            | What the AI will do:                                  |
-| :----------------------------------- | :--------------------------------------------- | :---------------------------------------------------- |
-| **You love the result**              | "Perfect. Do the github thing."                | Updates Milestones, Merges code, Pushes to GitHub.    |
-| **It works but needs a minor tweak** | "Good, but change X."                          | AI stays in the current branch and fixes X.           |
-| **It's still broken after 3 tries**  | "Take me back."                                | AI runs `git reset` to the last healthy state.        |
-| **An old feature (Toast) broke**     | "Repair the [Feature] from the Milestone log." | AI transplants old healthy code into the new version. |
+**Copy-Paste this as your first message to a new AI:**
+
+> _"Read **AI_HANDOVER.md**, **LOCKED_FEATURES.md**, and **MILESTONES.md**. Follow the Git workflow and milestone logging rules there. Start a new branch for my request and do not modify 'main' until I say 'Perfect it working and stuff do the GitHub thing...'"_
 
 ---
 
-### ❓ Is this enough to stop the "Fix/Break" cycle?
+### ✅ 2. When they do a Good Job
 
-**Yes.** This is the exact workflow professional developers use. The reason it breaks now is that the AI "forgets" how it built the project 100 turns ago.
+**When you are happy with the result, say:**
 
-By using **Branches** and **Milestones**:
+> _"Perfect. It is working, do the GitHub thing. Update **MILESTONES.md**, lock it in, and push it to GitHub. Create a good, relevant commit message that is easily searchable later if you break this feature we just fixed."_
 
-1.  **Safety Room**: A new branch is like a "testing room." If the AI breaks things in there, your "Main" code is still safe in the other room.
-2.  **Milestones**: If the AI forgets how the Toast works, the `MILESTONES.md` file acts as their memory. It points them to the exact code that worked on Jan 29th.
+---
 
-**You are now the Manager.** Use these commands to keep the AI on track! 🚀🛡️
+### 🛠️ 3. If they break an "Old" feature
+
+**If something that used to work suddenly stops working, say:**
+
+> _"The **[Feature Name]** isn’t working dude. Look at **MILESTONES.md**, find the commit about it, and restore ONLY that part of the code to fix this bug. It used to work perfectly back then."_
+
+---
+
+### 🆘 4. If they "fuck up" everything
+
+**If the AI gets stuck or breaks too many things, say:**
+
+> _"Stop. Take me back. Undo everything immediately and take me back to my last healthy milestone."_
+
+---
+
+### ❓ Why this works:
+
+1.  **Safety Room**: The AI works in a "Branch" (a copy), so your main code stays safe until you say "Perfect."
+2.  **Permanent Memory**: `MILESTONES.md` tells the AI exactly which version of the code was perfect, so they can't "forget" it.
+3.  **Surgical Repair**: You can fix one specific bug without losing all your other progress.
+
+**You are now the Manager. Everything is backed up and safe!** 🚀🛡️
