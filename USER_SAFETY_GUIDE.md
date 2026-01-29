@@ -1,34 +1,33 @@
-# 🛡️ Your Quick Safety Guide
+# 🛡️ Your Ultimate Safety Guide
 
-### 🏁 Starting with a New AI
+This is how you manage any AI working on this project. This system is designed to stop the "Endless Loop of Bugs."
 
-Just paste this one line:
+### 📅 The Handover (Start of every New Chat)
 
-> _"Read AI_HANDOVER.md and MILESTONES.md. Then, start a new branch for my request."_
+**Copy-Paste this:**
 
----
-
-### 🚀 Saving Your Work
-
-You don't need to explain anything. Just say:
-
-> **"Do the github thing."**
-> The AI is instructed to automatically update the Milestones, commit, and push it to your GitHub for you.
+> _"Read **AI_HANDOVER.md** and **MILESTONES.md**. Start a new branch for my request and do not modify 'main' until I say 'Perfect'."_
 
 ---
 
-### 🆘 Fixing Bugs
+### 🚦 When to say what:
 
-The AI has **3 tries** to fix a bug. If it gets stuck after 3 attempts, say:
-
-> **"Take me back."**
-> It will use the "Time Machine" to restore your last working version.
+| If this happens...                   | Say this to the AI:                            | What the AI will do:                                  |
+| :----------------------------------- | :--------------------------------------------- | :---------------------------------------------------- |
+| **You love the result**              | "Perfect. Do the github thing."                | Updates Milestones, Merges code, Pushes to GitHub.    |
+| **It works but needs a minor tweak** | "Good, but change X."                          | AI stays in the current branch and fixes X.           |
+| **It's still broken after 3 tries**  | "Take me back."                                | AI runs `git reset` to the last healthy state.        |
+| **An old feature (Toast) broke**     | "Repair the [Feature] from the Milestone log." | AI transplants old healthy code into the new version. |
 
 ---
 
-### 🛠️ Surgical Repair
+### ❓ Is this enough to stop the "Fix/Break" cycle?
 
-If an old feature breaks (like the red pill), say:
+**Yes.** This is the exact workflow professional developers use. The reason it breaks now is that the AI "forgets" how it built the project 100 turns ago.
 
-> **"Repair the Toast UI from the Jan 29 milestone."**
-> The AI will find the old perfect code and transplant it into your current project.
+By using **Branches** and **Milestones**:
+
+1.  **Safety Room**: A new branch is like a "testing room." If the AI breaks things in there, your "Main" code is still safe in the other room.
+2.  **Milestones**: If the AI forgets how the Toast works, the `MILESTONES.md` file acts as their memory. It points them to the exact code that worked on Jan 29th.
+
+**You are now the Manager.** Use these commands to keep the AI on track! 🚀🛡️
