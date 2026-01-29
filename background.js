@@ -5,37 +5,55 @@
 let g_dailyStats = null;
 let g_settingsCache = null;
 
+// Promise-based storage helpers for cleaner async/await
+const storage = {
+    local: {
+        get: (keys) => new Promise(resolve => chrome.storage.local.get(keys, resolve)),
+        set: (data) => new Promise(resolve => chrome.storage.local.set(data, resolve)),
+        remove: (keys) => new Promise(resolve => chrome.storage.local.remove(keys, resolve))
+    },
+    sync: {
+        get: (keys) => new Promise(resolve => chrome.storage.sync.get(keys, resolve)),
+        set: (data) => new Promise(resolve => chrome.storage.sync.set(data, resolve))
+    },
+    session: {
+        get: (keys) => new Promise(resolve => {
+            if (!chrome.storage.session) return resolve({});
+            chrome.storage.session.get(keys, resolve);
+        }),
+        set: (data) => new Promise(resolve => {
+            if (!chrome.storage.session) return resolve();
+            chrome.storage.session.set(data, resolve);
+        }),
+        remove: (keys) => new Promise(resolve => {
+            if (!chrome.storage.session) return resolve();
+            chrome.storage.session.remove(keys, resolve);
+        })
+    }
+};
+
 async function ensureSettings() {
     if (g_settingsCache) return g_settingsCache;
-    return new Promise(resolve => {
-        chrome.storage.sync.get('settings', (res) => {
-            g_settingsCache = { ...DEFAULT_SETTINGS, ...(res.settings || {}) };
-            // Deep merge details if needed, but shallow merge of top keys is usually enough for backend logic
-            // We'll rely on the existing extensive merge in 'getSettings' handler for full config
-            resolve(g_settingsCache);
-        });
-    });
+    const res = await storage.sync.get('settings');
+    g_settingsCache = { ...DEFAULT_SETTINGS, ...(res.settings || {}) };
+    return g_settingsCache;
 }
 
 async function getDailyStats() {
     if (g_dailyStats) return g_dailyStats;
     await ensureSettings();
-    const startHour = (g_settingsCache && g_settingsCache.dayStartHour) || 0;
+    const startHour = g_settingsCache.dayStartHour || 0;
     
-    return new Promise(resolve => {
-        chrome.storage.local.get(['dailyStats'], (result) => {
-            const logicalDate = getLogicalDate(Date.now(), startHour);
-            g_dailyStats = result.dailyStats || { date: logicalDate, sites: {}, browserSeconds: 0 };
-            
-            // Check for stale date immediately on load
-            // Only reset if moving FORWARD in time (lexicographical comparison)
-            if (g_dailyStats.date < logicalDate) {
-               console.log('[Cure] Loaded stale stats (new day), resetting in memory.');
-               g_dailyStats = { date: logicalDate, sites: {}, browserUsageHistory: [] };
-            }
-            resolve(g_dailyStats);
-        });
-    });
+    const res = await storage.local.get('dailyStats');
+    const logicalDate = getLogicalDate(Date.now(), startHour);
+    g_dailyStats = res.dailyStats || { date: logicalDate, sites: {}, browserUsageHistory: [] };
+    
+    // Check for stale date immediately on load
+    if (g_dailyStats.date < logicalDate) {
+        console.log('[Cure] Loaded stale stats (new day), resetting.');
+        g_dailyStats = { date: logicalDate, sites: {}, browserUsageHistory: [] };
+    }
+    return g_dailyStats;
 }
 
 async function saveStats() {
@@ -180,6 +198,93 @@ async function updateBlockingRules(blacklist) {
 
 // Handle messages from content scripts/popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'challengeStarted') {
+        const hostname = request.hostname;
+        const tabId = sender.tab?.id;
+        if (hostname && tabId && chrome.storage.session) {
+            // Track this challenge extension-wide
+            chrome.storage.session.set({ [`cure_challenge_active_${tabId}`]: hostname });
+            // PESSIMISTIC LOCKING: Assume they might quit/fail, so set the flag NOW.
+            // It will be cleared only on success or voluntary "Give Up".
+            chrome.storage.session.set({ [`cure_needs_reset_${hostname}`]: true });
+            console.log(`[Cure] Challenge started on ${hostname} (Tab ${tabId}) - Reset Flag SET`);
+        }
+        sendResponse({ success: true });
+        return;
+    }
+
+    if (request.action === 'challengeFinished') {
+        const hostname = request.hostname;
+        const tabId = sender.tab?.id;
+        if (tabId && chrome.storage.session) {
+            chrome.storage.session.remove([`cure_challenge_active_${tabId}`, `cure_needs_reset_${hostname}`]);
+            console.log(`[Cure] Challenge finished on ${hostname} (Tab ${tabId})`);
+        }
+        sendResponse({ success: true });
+        return;
+    }
+
+    if (request.action === 'checkResetStatus') {
+        const hostname = request.hostname;
+        console.log(`[Cure] checkResetStatus called for: ${hostname}`);
+        storage.session.get(`cure_needs_reset_${hostname}`).then(res => {
+            const needsReset = res[`cure_needs_reset_${hostname}`] === true;
+            console.log(`[Cure] checkResetStatus result for ${hostname}:`, needsReset, 'raw:', res);
+            sendResponse({ needsReset });
+        }).catch(e => {
+            console.error(`[Cure] checkResetStatus error:`, e);
+            sendResponse({ needsReset: false, error: e.message });
+        });
+        return true; // Async
+    }
+
+    if (request.action === 'clearResetFlag') {
+        const hostname = request.hostname;
+        if (chrome.storage.session) {
+            chrome.storage.session.remove(`cure_needs_reset_${hostname}`);
+            // Also notify tabs on this hostname to stop showing the toast
+            chrome.tabs.query({}, (tabs) => {
+                tabs.forEach(t => {
+                    try {
+                        if (t.url && new URL(t.url).hostname.replace('www.', '') === hostname.replace('www.', '')) {
+                            chrome.tabs.sendMessage(t.id, { action: 'dismissResetToast' }).catch(() => {});
+                        }
+                    } catch(e) {}
+                });
+            });
+        }
+        sendResponse({ success: true });
+        return;
+    }
+
+    if (request.action === 'setResetFlag') {
+        const hostname = request.hostname;
+        if (chrome.storage.session && hostname) {
+            chrome.storage.session.set({ [`cure_needs_reset_${hostname}`]: true });
+            console.log(`[Cure] Global reset flag set for ${hostname}`);
+        }
+        sendResponse({ success: true });
+        return;
+    }
+
+    // --- SESSION STORAGE PROXY (FIX FOR CONTENT SCRIPT RESTRICTIONS) ---
+    if (request.action === 'sessionStorageProxy') {
+        const { op, key, value } = request;
+        if (!chrome.storage.session) {
+            sendResponse({ error: 'Session storage unavailable' });
+            return;
+        }
+
+        if (op === 'get') {
+            chrome.storage.session.get(key).then(res => sendResponse({ value: res[key] }));
+        } else if (op === 'set') {
+            chrome.storage.session.set({ [key]: value }).then(() => sendResponse({ success: true }));
+        } else if (op === 'remove') {
+            chrome.storage.session.remove(key).then(() => sendResponse({ success: true }));
+        }
+        return true; // Async
+    }
+
     if (request.action === 'getSettings') {
         chrome.storage.sync.get('settings', (result) => {
             if (chrome.runtime.lastError) {
@@ -214,43 +319,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'trackLaunch') {
         const hostname = request.hostname;
         (async () => {
-            await ensureSettings();
-            const stats = await getDailyStats();
-            const settings = g_settingsCache;
+            try {
+                const settings = await ensureSettings();
+                const stats = await getDailyStats();
+                const now = Date.now();
 
-            // Merge triggers safely
-            const triggers = { ...DEFAULT_SETTINGS.hardLockTriggers, ...(settings.hardLockTriggers || {}) };
+                // Merge triggers safely
+                const triggers = { ...DEFAULT_SETTINGS.hardLockTriggers, ...(settings.hardLockTriggers || {}) };
 
-            // GLOBAL KILL-SWITCH
-            if (settings.masterHardLock === false) {
-                sendResponse({ locked: false, sessionActive: true, reason: 'masterDisabled' });
-                return;
-            }
-
-            const config = triggers.launchLimit;
-            if (!stats.sites[hostname]) stats.sites[hostname] = { activeSeconds: 0, launches: [], lastActiveAt: 0, activeSession: null };
-            let siteStats = stats.sites[hostname];
-            if (!siteStats.launches) siteStats.launches = [];
-
-            const now = Date.now();
-            let isLocked = false;
-            let currentSessionActive = false;
-
-            // 1. Check active session
-            if (siteStats.activeSession) {
-                const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
-                if (inactivityElapsed < 2) {
-                    currentSessionActive = true;
-                    siteStats.activeSession.lastActive = now;
-                    siteStats.lastActiveAt = now;
-                } else {
-                    siteStats.activeSession = null;
+                // GLOBAL KILL-SWITCH
+                if (settings.masterHardLock === false) {
+                    sendResponse({ locked: false, sessionActive: true, reason: 'masterDisabled', remaining: 99, currentLaunches: 0, browserSeconds: 0 });
+                    return;
                 }
-            }
 
-            // Check Lock State (Async)
-            const lockKey = `lock_${hostname}`;
-            chrome.storage.local.get(lockKey, (lockRes) => {
+                const config = triggers.launchLimit;
+                if (!stats.sites[hostname]) stats.sites[hostname] = { usageHistory: [], launches: [], lastActiveAt: 0, activeSession: null };
+                let siteStats = stats.sites[hostname];
+                if (!siteStats.launches) siteStats.launches = [];
+
+                let isLocked = false;
+                let currentSessionActive = false;
+
+                // 1. Check active session
+                if (siteStats.activeSession) {
+                    const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
+                    if (inactivityElapsed < 2) {
+                        currentSessionActive = true;
+                        siteStats.activeSession.lastActive = now;
+                        siteStats.lastActiveAt = now;
+                    } else {
+                        siteStats.activeSession = null;
+                    }
+                }
+
+                // Check Lock State (Async)
+                const lockKey = `lock_${hostname}`;
+                const lockRes = await storage.local.get(lockKey);
                 const lockState = lockRes[lockKey];
                 const isUnlocked = lockState && lockState.unlocked && (!lockState.expiresAt || now < lockState.expiresAt);
 
@@ -302,7 +407,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     currentLaunches: history.length,
                     browserSeconds: stats.browserUsageHistory ? stats.browserUsageHistory.reduce((a, c) => a + c.dur, 0) : 0
                 });
-            });
+            } catch (e) {
+                console.error('[Cure] trackLaunch handler error:', e);
+                sendResponse({ locked: false, sessionActive: true, error: e.message });
+            }
         })();
         return true;
     }
@@ -327,46 +435,51 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'trackUsage') {
         const { hostname, deltaSiteSeconds, deltaBrowserSeconds } = request;
         (async () => {
-             await ensureSettings();
-             const stats = await getDailyStats();
-             const startHour = (g_settingsCache && g_settingsCache.dayStartHour) || 0;
-             const logicalDate = getLogicalDate(Date.now(), startHour);
+             try {
+                 await ensureSettings();
+                 const stats = await getDailyStats();
+                 const startHour = (g_settingsCache && g_settingsCache.dayStartHour) || 0;
+                 const logicalDate = getLogicalDate(Date.now(), startHour);
 
-            // Double check reset (Concurrent safety: if another tab triggered reset, g_dailyStats is already updated in memory)
-            if (stats.date !== logicalDate) {
-                stats.date = logicalDate;
-                stats.sites = {};
-                stats.browserUsageHistory = [];
+                // Double check reset (Concurrent safety: if another tab triggered reset, g_dailyStats is already updated in memory)
+                if (stats.date !== logicalDate) {
+                    stats.date = logicalDate;
+                    stats.sites = {};
+                    stats.browserUsageHistory = [];
+                }
+
+                if (!stats.sites[hostname]) stats.sites[hostname] = { usageHistory: [], launches: [], activeSession: null };
+                if (!stats.browserUsageHistory) stats.browserUsageHistory = [];
+
+                const now = Date.now();
+                stats.sites[hostname].lastActiveAt = now;
+                if (stats.sites[hostname].activeSession) {
+                    stats.sites[hostname].activeSession.lastActive = now;
+                }
+
+                 if (deltaSiteSeconds > 0) {
+                    if (!stats.sites[hostname].usageHistory) stats.sites[hostname].usageHistory = [];
+                    stats.sites[hostname].usageHistory.push({ ts: now, dur: deltaSiteSeconds });
+                }
+
+                if (deltaBrowserSeconds > 0) {
+                    stats.browserUsageHistory.push({ ts: now, dur: deltaBrowserSeconds });
+                }
+
+                // Trim Logic (In Memory)
+                const oneDayMs = 24 * 60 * 60 * 1000;
+                // Optimize: Only trim occasionally? Or every time?
+                // Every time is safer for memory, but iterating arrays is slow.
+                // Let's do it every time for correct rolling window.
+                stats.browserUsageHistory = stats.browserUsageHistory.filter(c => now - c.ts < oneDayMs);
+                stats.sites[hostname].usageHistory = (stats.sites[hostname].usageHistory || []).filter(c => now - c.ts < oneDayMs);
+
+                saveStats();
+                sendResponse({ success: true });
+            } catch (e) {
+                console.error('[Cure] trackUsage failed:', e);
+                sendResponse({ success: false, error: e.message });
             }
-
-            if (!stats.sites[hostname]) stats.sites[hostname] = { usageHistory: [], launches: [], activeSession: null };
-            if (!stats.browserUsageHistory) stats.browserUsageHistory = [];
-
-            const now = Date.now();
-            stats.sites[hostname].lastActiveAt = now;
-            if (stats.sites[hostname].activeSession) {
-                stats.sites[hostname].activeSession.lastActive = now;
-            }
-
-             if (deltaSiteSeconds > 0) {
-                if (!stats.sites[hostname].usageHistory) stats.sites[hostname].usageHistory = [];
-                stats.sites[hostname].usageHistory.push({ ts: now, dur: deltaSiteSeconds });
-            }
-
-            if (deltaBrowserSeconds > 0) {
-                stats.browserUsageHistory.push({ ts: now, dur: deltaBrowserSeconds });
-            }
-
-            // Trim Logic (In Memory)
-            const oneDayMs = 24 * 60 * 60 * 1000;
-            // Optimize: Only trim occasionally? Or every time?
-            // Every time is safer for memory, but iterating arrays is slow.
-            // Let's do it every time for correct rolling window.
-            stats.browserUsageHistory = stats.browserUsageHistory.filter(c => now - c.ts < oneDayMs);
-            stats.sites[hostname].usageHistory = (stats.sites[hostname].usageHistory || []).filter(c => now - c.ts < oneDayMs);
-
-            saveStats();
-            sendResponse({ success: true });
         })();
         return true;
     }
@@ -374,23 +487,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'getWindowedUsage') {
         const { hostname, siteWindowSeconds, browserWindowSeconds } = request;
         (async () => {
-            const stats = await getDailyStats();
-            const now = Date.now();
-            let siteSum = 0;
-            if (stats.sites[hostname] && stats.sites[hostname].usageHistory) {
-                const windowMs = siteWindowSeconds * 1000;
-                siteSum = stats.sites[hostname].usageHistory
-                    .filter(c => now - c.ts < windowMs)
-                    .reduce((acc, c) => acc + c.dur, 0);
+            try {
+                const stats = await getDailyStats();
+                const now = Date.now();
+                let siteSum = 0;
+                if (stats.sites[hostname] && stats.sites[hostname].usageHistory) {
+                    const windowMs = siteWindowSeconds * 1000;
+                    siteSum = stats.sites[hostname].usageHistory
+                        .filter(c => now - c.ts < windowMs)
+                        .reduce((acc, c) => acc + c.dur, 0);
+                }
+                let browserSum = 0;
+                if (stats.browserUsageHistory) {
+                    const windowMs = browserWindowSeconds * 1000;
+                    browserSum = stats.browserUsageHistory
+                        .filter(c => now - c.ts < windowMs)
+                        .reduce((acc, c) => acc + c.dur, 0);
+                }
+                sendResponse({ siteSeconds: siteSum, browserSeconds: browserSum });
+            } catch (e) {
+                console.error('[Cure] getWindowedUsage failed:', e);
+                sendResponse({ siteSeconds: 0, browserSeconds: 0, error: e.message });
             }
-            let browserSum = 0;
-            if (stats.browserUsageHistory) {
-                const windowMs = browserWindowSeconds * 1000;
-                browserSum = stats.browserUsageHistory
-                    .filter(c => now - c.ts < windowMs)
-                    .reduce((acc, c) => acc + c.dur, 0);
-            }
-            sendResponse({ siteSeconds: siteSum, browserSeconds: browserSum });
         })();
         return true;
     }
@@ -510,38 +628,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const { hostname } = request;
         const key = `lock_${hostname}`;
 
-        chrome.storage.local.get([key], async (result) => {
-            const lockState = result[key];
-            const settings = await ensureSettings();
-            
-            // FIX 105: Tab-Level Whitelisting for Iframes
-            // If the parent tab is whitelisted, the iframe should be allowed too.
-            let tabWhitelisted = false;
-            if (sender.tab && sender.tab.url) {
-                try {
-                    const tabUrl = new URL(sender.tab.url);
-                    tabWhitelisted = isHostnameWhitelisted(tabUrl.hostname, settings.whitelist);
-                } catch (e) { /* Ignore invalid URLs */ }
-            }
+        (async () => {
+            try {
+                const result = await storage.local.get([key]);
+                const lockState = result[key];
+                const settings = await ensureSettings();
+                
+                // FIX 105: Tab-Level Whitelisting for Iframes
+                // If the parent tab is whitelisted, the iframe should be allowed too.
+                let tabWhitelisted = false;
+                if (sender.tab && sender.tab.url) {
+                    try {
+                        const tabUrl = new URL(sender.tab.url);
+                        tabWhitelisted = isHostnameWhitelisted(tabUrl.hostname, settings.whitelist);
+                    } catch (e) { /* Ignore invalid URLs */ }
+                }
 
-            if (!lockState) {
-                sendResponse({ locked: false, tabWhitelisted });
-                return;
-            }
+                if (!lockState) {
+                    sendResponse({ locked: false, tabWhitelisted });
+                    return;
+                }
 
-            // STICKY LOCK: Lock only clears if 'unlocked' is true (protocol completed)
-            if (lockState.unlocked) {
-                sendResponse({ locked: false, unlocked: true, tabWhitelisted });
-                return;
-            }
+                // STICKY LOCK: Lock only clears if 'unlocked' is true (protocol completed)
+                if (lockState.unlocked) {
+                    sendResponse({ locked: false, unlocked: true, tabWhitelisted });
+                    return;
+                }
 
-            // Still locked - user must complete a protocol
-            sendResponse({
-                locked: true,
-                lockState,
-                tabWhitelisted
-            });
-        });
+                // Still locked - user must complete a protocol
+                sendResponse({
+                    locked: true,
+                    lockState,
+                    tabWhitelisted
+                });
+            } catch (e) {
+                console.error('[Cure] getLockState failed:', e);
+                sendResponse({ locked: false, error: e.message });
+            }
+        })();
         return true;
     }
 
@@ -649,29 +773,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'factoryReset') {
-        // 1. Clear ALL storage
+        // 1. Storage Sequence Closure (Flattened for safety)
+        const finalizeReset = () => {
+            chrome.storage.sync.set({ settings: DEFAULT_SETTINGS }, () => {
+                g_settingsCache = { ...DEFAULT_SETTINGS };
+                g_dailyStats = null;
+                updateBlockingRules([]);
+                
+                chrome.tabs.query({}, (tabs) => {
+                    for (const tab of tabs) {
+                        if (tab.id && tab.url && (tab.url.startsWith('http') || tab.url.startsWith('https'))) {
+                            chrome.tabs.reload(tab.id, { bypassCache: true }).catch(() => {});
+                        }
+                    }
+                });
+                sendResponse({ success: true });
+            });
+        };
+
         chrome.storage.local.clear(() => {
             chrome.storage.sync.clear(() => {
-                // 2. Reset to Defaults
-                chrome.storage.sync.set({ settings: DEFAULT_SETTINGS }, () => {
-                    // 3. Clear Cache
-                    g_settingsCache = null;
-                    g_dailyStats = null;
-                    
-                    // 4. Update Blocking Rules (Clear them)
-                    updateBlockingRules([]);
-
-                    // 5. Notify all tabs to reload/reset
-                    chrome.tabs.query({}, (tabs) => {
-                        for (const tab of tabs) {
-                            if (tab.id) {
-                                chrome.tabs.sendMessage(tab.id, { action: 'factoryResetComplete' }).catch(() => {});
-                            }
-                        }
-                    });
-
-                    sendResponse({ success: true });
-                });
+                if (chrome.storage.session) {
+                    chrome.storage.session.clear(finalizeReset);
+                } else {
+                    finalizeReset();
+                }
             });
         });
         return true;
@@ -716,31 +842,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         const key = `lock_${hostname}`;
-        // 1. Remove the lock key
-        chrome.storage.local.remove(key, () => {
-            // 2. Direct unlock to the requesting tab (Fastest feedback)
-            if (tabId) {
-                chrome.tabs.sendMessage(tabId, { 
-                    action: 'forceGlobalUnlock',
-                    hostname: hostname 
-                }).catch(() => { /* Tab might be closed or restricted */ });
+        const timerKey = `cure_timer_${hostname}`;
+
+        // 1. Remove BOTH the lock state AND the accumulated time
+        chrome.storage.local.remove([key, timerKey], () => {
+            // 2. Clear Daily Stats for this site (Optional but cleaner for "Reset Progress")
+            if (g_dailyStats && g_dailyStats.sites[hostname]) {
+                delete g_dailyStats.sites[hostname];
+                saveStats();
             }
 
-            // 3. Broadcast to all other tabs of this site (Consistency)
-            // Wrapped in try-catch for safety
+            // 3. Direct unlock to the requesting tab (Fastest feedback)
+            if (tabId) {
+                chrome.tabs.reload(tabId, { bypassCache: false }).catch(() => {});
+            }
+
+            // 4. Force reload all other tabs of this site for consistent reset
             try {
                 chrome.tabs.query({ url: "*://" + hostname + "/*" }, (tabs) => {
-                    if (chrome.runtime.lastError) {
-                        // Pattern might be invalid for some hostnames (e.g. localhost with port)
-                        console.warn('[Cure] Broadcast query failed:', chrome.runtime.lastError);
-                        return;
-                    }
+                    if (chrome.runtime.lastError) return;
                     for (const tab of tabs) {
-                        if (tab.id && tab.id !== tabId) { // Skip already messaged tab
-                            chrome.tabs.sendMessage(tab.id, { 
-                                action: 'forceGlobalUnlock',
-                                hostname: hostname 
-                            }).catch(() => {});
+                        if (tab.id && tab.id !== tabId) {
+                            chrome.tabs.reload(tab.id).catch(() => {});
                         }
                     }
                 });
@@ -804,3 +927,45 @@ let storedLogicalDate = null;
 chrome.runtime.onStartup.addListener(checkDailyReset);
 checkDailyReset();
 setInterval(checkDailyReset, 60 * 60 * 1000); // Every hour
+// --- Robust Challenge Abandonment Detection ---
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Only care about URL changes that navigate away from a hostname
+    if (changeInfo.url) {
+        handleTabAbandonment(tabId, changeInfo.url);
+    }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+    handleTabAbandonment(tabId, null);
+});
+
+async function handleTabAbandonment(tabId, newUrl) {
+    if (!chrome.storage.session) return;
+    const key = `cure_challenge_active_${tabId}`;
+    const result = await chrome.storage.session.get(key);
+    const activeHostname = result[key];
+
+    if (activeHostname) {
+        // Did we navigate to a DIFFERENT site?
+        let isSameSite = false;
+        if (newUrl) {
+            try {
+                const url = new URL(newUrl);
+                // Subdomain insensitive check (e.g. www.youtube.com vs youtube.com)
+                const newHost = url.hostname.replace('www.', '');
+                const oldHost = activeHostname.replace('www.', '');
+                if (newHost === oldHost) isSameSite = true;
+            } catch (e) {
+                // If it's not a valid URL (e.g. chrome://), it's definitely not the same site
+            }
+        }
+
+        if (!isSameSite) {
+            console.log(`[Cure] Challenge abandoned in tab ${tabId} on ${activeHostname}`);
+            // Flag this hostname for a reset
+            await chrome.storage.session.set({ [`cure_needs_reset_${activeHostname}`]: true });
+            // Clear the active challenge for this tab
+            await chrome.storage.session.remove(key);
+        }
+    }
+}

@@ -32,6 +32,13 @@ This feature is highly sensitive to the browser's rendering lifecycle. It has br
 - **Guard Logic**: Do NOT add `if (isTypingChallengeActive)` guards to the _display_ logic (it causes the toast to vanish on the Decision Screen).
 - **Backup**: A verified backup exists at `content.js.STABLE_BACKUP`.
 
+### 🔒 Pessimistic Locking (NEW - CRITICAL)
+
+- **The Logic**: We set the reset flag (`cure_needs_reset`) **IMMEDIATELY** when the challenge starts (`challengeStarted` in `background.js`).
+- **The Release**: We only clear this flag if the user **EXPLICITLY** succeeds or gives up.
+- **Why**: Browsers kill `cleanup()` / `unload` events aggressively. We cannot rely on saving state when the user leaves. We must assume they will leave uncleanly.
+- **DO NOT REVERT TO "CLEANUP"-BASED LOGIC.**
+
 ---
 
 ## 2. Shadow DOM Injection

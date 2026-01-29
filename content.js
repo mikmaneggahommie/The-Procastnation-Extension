@@ -377,10 +377,9 @@ class CureVault {
         if (needsReset || this._resetToastPending) {
             if (needsReset) {
                 // FIX: PERSISTENCE STRATEGY
-                // 1. Do NOT remove specific/generic keys here (Keep Local). 
-                //    This ensures the toast survives page reloads/navigation until dismissed.
-                // 2. DO remove the GLOBAL background flag to prevent 'evaluateAllTriggers' from re-firing.
-                chrome.storage.session.remove('cure_typing_active_global');
+                // 1. Keep Local flags for persistence across reloads.
+                // 2. Clear Global Flag via Proxy (to stop background nag)
+                this.safeSendMessage({ action: 'clearResetFlag', hostname: window.location.hostname });
 
                 this._resetToastPending = true;
                 setTimeout(() => { this._resetToastPending = false; }, 2000);
@@ -413,16 +412,20 @@ class CureVault {
         if (this.isIframe || !this.isContextValid()) return;
 
         return new Promise(resolve => {
-            chrome.storage.session.get('cure_typing_active_global', (result) => {
-                const data = result?.cure_typing_active_global;
+            this.safeSendMessage({ 
+                action: 'sessionStorageProxy', 
+                op: 'get', 
+                key: 'cure_typing_active_global' 
+            }, (res) => {
+                const data = res?.value;
                 
-                // DATA format: { hostname: string, owner: string }
                 if (data && data.hostname === window.location.hostname) {
                     if (data.owner !== this.instanceId) {
-                        // Someone else had the active lock. We are taking it over.
-                        // We do NOT show a toast here because we are starting fresh (stealing the lock).
-                        // The user hasn't "lost" progress on THIS tab.
-                        chrome.storage.session.remove('cure_typing_active_global');
+                        this.safeSendMessage({ 
+                            action: 'sessionStorageProxy', 
+                            op: 'remove', 
+                            key: 'cure_typing_active_global' 
+                        });
                         
                         if (forceTextReset) {
                             this.currentChallengeText = null;
@@ -430,9 +433,11 @@ class CureVault {
                     }
                 }
                 
-                // Assert our active status globally
-                chrome.storage.session.set({ 
-                    cure_typing_active_global: { 
+                this.safeSendMessage({ 
+                    action: 'sessionStorageProxy', 
+                    op: 'set', 
+                    key: 'cure_typing_active_global',
+                    value: { 
                         hostname: window.location.hostname, 
                         owner: this.instanceId 
                     } 
@@ -452,6 +457,11 @@ class CureVault {
             // Set BOTH keys to be absolutely sure we catch it on return
             sessionStorage.setItem(`cure_needs_reset_${window.location.hostname}`, 'true');
             sessionStorage.setItem('cure_needs_reset', 'true');
+            
+            // FIX: Robust Sync to Background (YouTube Persistence)
+            // sessionStorage is often lost or isolated. We normally can't send async messages in unload,
+            // but we try anyway. If it fails, we rely on local flags.
+            this.safeSendMessage({ action: 'setResetFlag', hostname: window.location.hostname });
         }
         
         this.saveTimer();
@@ -628,15 +638,24 @@ class CureVault {
             const immediateTrigger = this.checkAnyTrigger();
             if (immediateTrigger) {
                 this.stateHardLock(immediateTrigger === true ? null : immediateTrigger);
-                return;
+                this.saveTimer();
             }
 
-            // 3. Perform definitive check for background-dependent states (Windowed limits, persistent locks)
+            // 1. Definitively check for background-dependent states (Windowed limits, persistent locks)
             this.evaluateAllTriggers().then(() => {
                 this.forceRefreshUI();
-                // FIX 123: Always restart the monitor after settings change to keep timer running
                 this.stateMonitor();
             });
+            return;
+        }
+
+        if (request.action === 'dismissResetToast') {
+            this.dismissToast();
+            return;
+        }
+
+        if (request.action === 'forceRefresh') {
+            this.evaluateAllTriggers().then(() => this.forceRefreshUI());
             return;
         }
 
@@ -2790,7 +2809,14 @@ class CureVault {
                 giveUpBtn.onclick = () => {
                     // Fix 64: User explicitly abandoned. Clear global flag so they don't get a "Reset" toast.
                     if (this.isContextValid()) {
-                        chrome.storage.session.remove('cure_typing_active_global');
+                        this.safeSendMessage({ 
+                            action: 'sessionStorageProxy', 
+                            op: 'remove', 
+                            key: 'cure_typing_active_global' 
+                        });
+                        // NEW FIX: Clear the Global Reset Flag as well (Pessimistic Locking)
+                        // Since they are voluntarily exiting, we don't need to warn them about a "Reset".
+                        this.safeSendMessage({ action: 'clearResetFlag', hostname: window.location.hostname });
                     }
                     this.renderDecisionScreen(this.settings.hardLockDuration || 30); // Go back
                 };
@@ -2888,7 +2914,13 @@ class CureVault {
         // Fix 72: Clear global typing flag immediately on reaching success screen.
         // This is a redundant safety layer to prevent the "Progress Reset" toast on reload.
         if (this.isContextValid()) {
-            chrome.storage.session.remove('cure_typing_active_global');
+            this.safeSendMessage({ 
+                action: 'sessionStorageProxy', 
+                op: 'remove', 
+                key: 'cure_typing_active_global' 
+            });
+            // NEW FIX: Clear Global Reset Flag on Success
+            this.safeSendMessage({ action: 'clearResetFlag', hostname: window.location.hostname });
         }
 
         if (!this.shadowRoot) return;

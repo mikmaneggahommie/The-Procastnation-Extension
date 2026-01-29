@@ -40,7 +40,16 @@ This project uses a strict Git Safety Net. You must follow this workflow:
 - **Iframe Logic**: The extension runs on both main frames and iframes. `isIframe` checks are critical but were recently tuned to allow toasts. Be careful re-introducing blockers.
 - **Instant Locking**: The "Test Zone" buttons in popup only target the _active tab_. Do not change this to global broadcasting without understanding the "Iframe Storm" bug.
 
+## 🚀 Working Features Log (The Time Machine)
+
+Any AI working on this project MUST look at this log before reverting. When a user says a feature is "perfect", add it here with the commit hash.
+
+- [x] **Strict Lock Toggle Fix**: (Commit: `33ef1de`) - Fixed the bypass when toggling Strict Lock ON/OFF while over limits.
+- [x] **Timer Preservation**: (Commit: `05274e2`) - Timer no longer resets to 0 when disabling Strict Lock.
+- [x] **Overlay Z-Index Fix**: (Commit: `33ef1de`) - Lock screen now has max z-index to stay on top of all sites.
+
 ## 🚀 How to Pick Up Where We Left Off
 
 1.  Read `task.md` (if available) to see the last checklist.
-2.  Ask the user: _"I see the AI_HANDOVER file. Shall I create a new branch for our next task to keep the main code safe?"_
+2.  Check the **Working Features Log** above to see what is currently considered "Perfect".
+3.  Ask the user for the next priority.

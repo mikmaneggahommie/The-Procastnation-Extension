@@ -1347,7 +1347,10 @@ function setupNewViewListeners() {
             chrome.runtime.sendMessage({ action: 'factoryReset' }, (res) => {
                 if (res && res.success) {
                     alert('Reset complete. Extension will reload.');
-                    chrome.runtime.reload(); // Hard reload of the extension process
+                    // Small delay to allow tab reload signals to propagate if needed
+                    setTimeout(() => {
+                        chrome.runtime.reload(); 
+                    }, 500);
                 }
             });
         }
