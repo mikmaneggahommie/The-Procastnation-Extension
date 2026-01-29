@@ -1,33 +1,39 @@
-# 🛑 EMERGENCY PROTOCOL (For Future AI Agents)
+# 🛑 PROJECT PROTOCOL (For Future AI Agents)
 
 **Project Status:** GOLDEN STATE (Stable)
-**Current Stable State:** See [MILESTONES.md](file:///Users/mac2015/Desktop/The%20Procastnation%20Extension/MILESTONES.md)
-**GitHub:** https://github.com/mikmaneggahommie/The-Procastnation-Extension
+**Safe Points:** See [MILESTONES.md](file:///Users/mac2015/Desktop/The%20Procastnation%20Extension/MILESTONES.md)
 
-## 🚀 THE HANDOVER RULE (MANDATORY AUTOMATION)
+## 🚀 THE HANDOVER RULE (MANDATORY)
 
-1.  **Read [MILESTONES.md](file:///Users/mac2015/Desktop/The%20Procastnation%20Extension/MILESTONES.md)** first. It is your source of truth for "Perfected" features.
-2.  **AUTO-UPDATE**: When the user says "Lock it in" or "Perfect", you MUST automatically:
-    - Capture the new commit hash.
-    - Update `MILESTONES.md` with the new feature and hash.
-    - Commit this update alongside the code changes.
-      _The user should never have to remind you to log a Milestone._
+1.  **Read the Docs**: Read `MILESTONES.md`, `LOCKED_FEATURES.md`, and `AI_HANDOVER.md` immediately upon starting.
+2.  **Branch First**: Every new task/fix MUST start in a new feature branch (`git checkout -b task-name`). Never work directly on `main`.
 
-## 🆘 THE EMERGENCY RULE (Strict Enforcement)
+## 🆘 THE BUG RULE (3-Strike System)
 
 If you make a change and it fails OR if the user says "it's broken":
 
-1.  **Stop everything.** Do not try to "patch" the bug more than ONCE.
-2.  **IMMEDIATELY** run `git reset --hard HEAD` to restore the last stable state.
+1.  **Iterate**: You have **3 attempts** to fix the bug.
+2.  **STOP and Revert**: If it is still broken after 3 tries, you MUST run `git reset --hard HEAD` and ask for clarification. Do not keep digging a hole.
+
+## 💾 TRIGGER PHRASES (Automation)
+
+The user will use these simple phrases. You must execute the full protocol for them:
+
+- **"Do the github thing"** or **"Lock it in"** or **"Perfect"**:
+  1. Update `MILESTONES.md` with current feature + hash.
+  2. Commit all changes.
+  3. Merge feature branch into `main`.
+  4. Push to origin.
+
+- **"Take me back"** or **"Undo"**:
+  1. Run `git reset --hard HEAD`.
+
+- **"Repair [Feature Name]"**:
+  1. Look at `MILESTONES.md` for the stable hash.
+  2. Restore ONLY that section of code using `git show`.
 
 ## 🚨 ANTI-CHEAT & UI CONSTRAINTS
 
-- **Anti-Cheat**: Blocks `paste`, `drop`, `contextmenu`. Logic in `content.js`.
-- **Toast UI**: Pill design, `8px 16px` padding, fixed at `35px` bottom. DO NOT CHANGE without explicit approval.
+- **Anti-Cheat**: Blocks `paste`, `drop`, `contextmenu` on challenge inputs.
+- **Toast UI**: Pill design, `8px 16px` padding, fixed at `35px` bottom. `z-index: 2147483647`.
 - **Strict Lock**: If a user is in a challenge, they MUST stay. Re-locking must be instant.
-
-## 🗣️ MAGIC PHRASES
-
-- **"Take me back" / "Undo"** → `git reset --hard HEAD`
-- **"Repair [Feature Name]"** → Find the last stable hash for that feature in `MILESTONES.md` and restore only that code.
-- **"Lock it in"** → `git add . && git commit -m "..." && git push origin main` (Plus the Auto-Update above).
