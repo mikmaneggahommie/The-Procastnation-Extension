@@ -36,10 +36,22 @@ This is how you manage any AI working on this project. Use these **Magic Phrases
 
 ---
 
+### 📖 GitHub Jargon Decoded
+
+| Term                  | What it means to You                                                                                                                      |
+| :-------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| **`main`**            | Your "Real" code. It should always be 100% working.                                                                                       |
+| **`Branch`**          | A temporary "Test Room." The AI makes a copy of your code here to experiment. If they break it, your `main` code is still safe.           |
+| **`refine-toast-ui`** | An example of a branch name. The AI chooses these automatically based on your request (e.g., `fix-reminders`).                            |
+| **`Tag`**             | A "Golden Bookmark." I created one called `v-stable-toast-fix`. This is a permanent marker that stays even if you delete everything else. |
+| **`Commit`**          | A "Save Point." Each time the AI saves, it adds a new commit to the history.                                                              |
+
+---
+
 ### ❓ Why this works:
 
 1.  **Safety Room**: The AI works in a "Branch" (a copy), so your main code stays safe until you say "Perfect."
 2.  **Permanent Memory**: `MILESTONES.md` tells the AI exactly which version of the code was perfect, so they can't "forget" it.
 3.  **Surgical Repair**: You can fix one specific bug without losing all your other progress.
 
-**You are now the Manager. Everything is backed up and safe!** 🚀🛡️
+**You are now the Manager. Everything is backed up and safe on GitHub!** 🚀🛡️
