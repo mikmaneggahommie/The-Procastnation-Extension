@@ -1912,6 +1912,7 @@ class CureVault {
     // 2. Do NOT change z-index (must be max).
     // 3. Animation keyframes must be injected into Shadow Root.
     // =========================================================================
+    /* SURGICAL FEATURE: TOAST_UI (The Global Notification System) */
     showToast(msg, type = 'info') {
         // FIX 115: Removed isIframe check. 
         const root = this.ensureShadow();
@@ -1996,6 +1997,7 @@ class CureVault {
     }
 
 
+    /* SURGICAL FEATURE: SHADOW_DOM (Styles and Foundation) */
     ensureShadow() {
         // Ensure host is still connected to the DOM
         if (this.shadowHost && !document.contains(this.shadowHost)) {
@@ -2851,6 +2853,7 @@ class CureVault {
         input.disabled = true;
 
         // Anti-Cheat: Block Copy/Paste & Drag/Drop
+        /* SURGICAL FEATURE: ANTI_CHEAT (Block Copy/Paste) */
         const blockCheat = (e) => {
             e.preventDefault();
             this.showToast('🚨 No Copy/Paste Allowed', 'error');
