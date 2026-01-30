@@ -1125,8 +1125,10 @@ function setupListeners() {
                             type: debugActions[id] 
                         }).catch(err => {
                             if (err.message.includes('Could not establish connection')) {
+                                showSavedIndicator('Refresh Tab!');
                                 console.warn('[Cure] Tab needs refresh to receive debug signals.');
                             } else {
+                                showSavedIndicator('Error!');
                                 console.error('[Cure] Debug trigger failed:', err);
                             }
                         });
