@@ -1,53 +1,39 @@
-# 🎓 Senior AI-Developer Workflow (Actionable Guide)
+# 🎓 Senior AI-Developer Workflow
 
-If you want to stop the frustration, you need to use these **Actionable Prompts** to control the AI from the very first second.
+If you want to stop the frustration and code like a Senior Engineer, you need to change how you "prepare the ground" before you ask the AI for a single line of code.
 
----
-
-### 1. The Modular Rule (Stop the 3,000-line Mess)
-
-**When to use**: Before the AI starts writing a big game or app.
-**The Prompt**:
-
-> _"I want to build a [Project Name]. **DO NOT** write everything in one file. Split the code into small, logical modules (e.g., UI, Game Logic, Physics). Create a folder structure first and show it to me."_
-
-- **The Result**: Instead of one broken `app.js`, you get 5 tiny files that are easy for the AI to fix without breaking each other.
-
-### 2. The Architecture-First Rule (The Blueprint)
-
-**When to use**: At the very start of any project.
-**The Prompt**:
-
-> _"Before you write any code, create a **PLAN.md**. List every feature we need and explain how the different files will talk to each other. I want to approve the logic before you write the first line."_
-
-- **The Result**: You fix "logical bugs" (like how the car moves) in words before they become expensive "code bugs."
-
-### 3. The Automated Verification (The Self-Check)
-
-**When to use**: When a feature is complex (like a physics engine or a login system).
-**The Prompt**:
-
-> _"I want this feature to be bulletproof. Write a small **test script** that I can run to verify that [Feature X] works as intended. The script should output 'PASS' or 'FAIL'."_
-
-- **The Result**: You don't have to manually play the game for 10 minutes to see if it's broken. You just run the script.
-
-### 4. The Strict Boundary (Protective Glass)
-
-**When to use**: When you have a piece of code (like the Toast UI) that is "Perfect."
-**The Prompt**:
-
-> _"I am moving the Toast UI code into a folder called `/locked`. You are allowed to read these files to understand the project, but you are **FORBIDDEN** from editing anything in that folder. If you need to make changes, ask me first."_
-
-- **The Result**: The AI will never "accidentally" refactor or delete your favorite features while trying to fix something else.
+Here are the 4 Golden Rules that Senior Devs use to keep AI from breaking things.
 
 ---
 
-### 👑 The "God-Mode" Opening (The First Thing You Say)
+### 1. The "Modular" Rule (Smaller is Better)
 
-Copy and paste this exact prompt to start any new project perfectly:
+**The Problem**: Large files (like 3,000+ lines) cause the AI to "forget" logic and introduce bugs.
+**The Senior Fix**: Split code into small, focused files (e.g., `ui.js`, `logic.js`, `api.js`).
 
-> _"I want to build **[Project Name]**. Before we write any code: 1. Initialize Git and set up a 'Golden State' Safety Net (AI_HANDOVER.md with 3-fix rule, and MILESTONES.md). 2. Create a **PLAN.md** with a **Modular File Structure** (tiny files, not one big one). 3. Once I approve the plan, start a new branch for the first task and do not touch 'main' until I say 'Perfect'."_
+- **Reason**: AI is 10X more accurate on 100 lines of code than on 3,000 lines.
+
+### 2. The "Architecture-First" Rule
+
+**The Problem**: Coding without a plan leads to "Spaghetti Code" and logic traps.
+**The Senior Fix**: Before writing code, have the AI write a **PLAN.md** listing features and file structures.
+
+- **Reason**: You catch logical errors in the "blueprint" before you waste time on broken code.
+
+### 3. The "Automated Verification" Rule
+
+**The Problem**: Manual testing of every small change is slow and error-prone.
+**The Senior Fix**: Ask the AI to write small "Test Scripts" that check if a feature works and say "PASS" or "FAIL."
+
+- **Reason**: The AI can verify its own work automatically.
+
+### 4. The "Strict Boundary" Rule
+
+**The Problem**: AI "cleans up" or "refactors" code you didn't want it to touch.
+**The Senior Fix**: Create a folder (like `/core` or `/locked`) for perfect code and tell the AI it is "Read-Only."
+
+- **Reason**: It keeps your "Golden State" code behind a bulletproof glass window.
 
 ---
 
-**Summary**: A senior dev spends 50% of their time **organizing** and only 50% **coding**. Use these prompts to make the AI organize the work for you! 🚀🛡️🦾
+**Summary**: A senior dev spends 50% of their time **organizing** and only 50% **coding**. Use these principles to stay in control! 🚀🎓🦾
