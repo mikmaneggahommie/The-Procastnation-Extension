@@ -11,13 +11,16 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 ## 🚀 Milestone Log
 
-| Date         | Feature                | Stable Commit | Description                                                |
-| :----------- | :--------------------- | :------------ | :--------------------------------------------------------- |
-| Jan 29, 2026 | **Surgical Readiness** | `53ba7c5`     | Added code tags to `content.js` for easier feature repair. |
-| Jan 29, 2026 | **Refined Toast UI**   | `9172297`     | Balanced Pill design, professional text/capitalization.    |
-| Jan 29, 2026 | **Anti-Cheat System**  | `19e0798`     | Blocks paste/drag/context-menu.                            |
-| Jan 29, 2026 | **YouTube Reset Fix**  | `ae96221`     | Fixed "Trusted Types" and SPA navigation bridge.           |
-| Jan 28, 2026 | **Timer Protection**   | `05274e2`     | Fixed timer reset bug and re-lock bypasses.                |
+| Date         | Feature                          | Stable Commit | Description                                                                                |
+| :----------- | :------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
+| Jan 30, 2026 | **Fix: Pause Screen Flicker**    | `[LATEST]`    | Sync'd content script with background defaults to ensure OFF-by-default features stay off. |
+| Jan 30, 2026 | **Fix: Global Video Playback**   | `8ebf231`     | Restricted Pause/Media blocking to blacklisted sites only.                                 |
+| Jan 30, 2026 | **Protocol Test: Yellow & Blue** | `5d2f222`     | Yellow on top, Blue on bottom.                                                             |
+| Jan 29, 2026 | **Surgical Readiness**           | `53ba7c5`     | Added code tags to `content.js` for easier feature repair.                                 |
+| Jan 29, 2026 | **Refined Toast UI**             | `9172297`     | Balanced Pill design, professional text/capitalization.                                    |
+| Jan 29, 2026 | **Anti-Cheat System**            | `19e0798`     | Blocks paste/drag/context-menu.                                                            |
+| Jan 29, 2026 | **YouTube Reset Fix**            | `ae96221`     | Fixed "Trusted Types" and SPA navigation bridge.                                           |
+| Jan 28, 2026 | **Timer Protection**             | `05274e2`     | Fixed timer reset bug and re-lock bypasses.                                                |
 
 ---
 

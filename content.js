@@ -134,8 +134,10 @@ const MediaController = {
     startEnforcement() {
         if (this.interval) clearInterval(this.interval);
         
-        // FIX 106: Whitelist safety. Never enforce media if site is allowed.
-        if (window.__CURE_VAULT_INSTANCE__ && window.__CURE_VAULT_INSTANCE__.isWhitelisted()) {
+        // FIX 106 & 123: Integrity Guard. 
+        // Never enforce media if site is whitelisted OR NOT blacklisted.
+        // This ensures neutral sites (Dailymotion, etc.) are never interrupted.
+        if (window.__CURE_VAULT_INSTANCE__ && (window.__CURE_VAULT_INSTANCE__.isWhitelisted() || !window.__CURE_VAULT_INSTANCE__.isBlacklisted())) {
             return;
         }
 
@@ -1172,6 +1174,10 @@ class CureVault {
         // If allowlisted and NOT allowed, never show
         if (isWhitelisted && !pauseAllowedOnWhitelist) return false;
 
+        // FIX 123: Blacklist Enforcement.
+        // Breathing Room (Take a Breath) should ONLY trigger on procrastination sites.
+        if (!this.isBlacklisted()) return false;
+
         // Suppress if the user just disabled a lock or whitelisted
         if (this.suppressBreathingRoomOnce) {
             this.suppressBreathingRoomOnce = false;
@@ -1209,16 +1215,15 @@ class CureVault {
     }
 
 
-    async getSettings() {
-        if (!this.isContextValid()) return this.settings || {};
-
+    getSettings() {
         return new Promise((resolve) => {
-            this.safeSendMessage({ action: 'getSettings' }, res => {
-                if (res && res.settings) {
-                    resolve(res.settings);
+            if (!this.isContextValid()) return resolve({});
+            this.safeSendMessage({ action: 'getSettings' }, (response) => {
+                if (response && response.settings) {
+                    resolve(response.settings);
                 } else {
-                    console.warn('[Cure] getSettings failed, using defaults:', chrome.runtime.lastError);
-                    resolve({});
+                    // Fallback to minimal safety defaults if background is slow
+                    resolve({ masterPause: false, masterHardLock: true });
                 }
             });
         });
