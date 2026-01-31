@@ -135,9 +135,15 @@ const MediaController = {
         if (this.interval) clearInterval(this.interval);
         
         // FIX 106 & 123: Integrity Guard. 
-        // Never enforce media if site is whitelisted OR NOT blacklisted.
-        // This ensures neutral sites (Dailymotion, etc.) are never interrupted.
-        if (window.__CURE_VAULT_INSTANCE__ && (window.__CURE_VAULT_INSTANCE__.isWhitelisted() || !window.__CURE_VAULT_INSTANCE__.isBlacklisted())) {
+        // Never enforce media if site is whitelisted.
+        // Also skip if site is not blacklisted UNLESS an active intervention or tab-level lock is active.
+        // This ensures neutral sites (and their players) are paused when the parent tab is locked.
+        const vault = window.__CURE_VAULT_INSTANCE__;
+        const isInterventionActive = vault && (vault.activeIntervention || vault.tabLevelLockActive);
+        const isWhitelisted = vault && vault.isWhitelisted();
+        const isBlacklisted = vault && vault.isBlacklisted();
+
+        if (isWhitelisted || (!isBlacklisted && !isInterventionActive)) {
             return;
         }
 
@@ -174,9 +180,10 @@ const MediaController = {
 function normalizeTypingText(str) {
     if (!str) return "";
     return str
-        .replace(/[‘’]/g, "'")
-        .replace(/[“”]/g, '"')
-        .replace(/[–—]/g, "-");
+        .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A\u02BC\u02BB\u02B9\u00B4\u0060]/g, "'") // All single-quote/apostrophe variants
+        .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, '"') // All double-quote variants
+        .replace(/[\u2013\u2014]/g, "-") // En-dash and Em-dash
+        .replace(/\u00A0/g, " "); // Non-breaking spaces
 }
 
 class CureVault {
@@ -217,6 +224,7 @@ class CureVault {
         this.lastMasterPauseState = null;
         
         this.activeIntervention = null; // Logical source of truth for UI vs Pill
+        this.tabLevelLockActive = false; // Cross-domain sync
         this.hiddenAt = null; // Track when tab was backgrounded
 
         // High-precision Monotonic Timing
@@ -540,7 +548,32 @@ class CureVault {
             return;
         }
 
+        if (request.action === 'forceMediaPause') {
+            // FIX 127: Cross-Domain Media Enforcement (Deep Broadcast)
+            // If any frame in the tab is locked, ALL frames must pause media regardless of their own domain/settings.
+            if (request.locked) {
+                this.tabLevelLockActive = true;
+                MediaController.startEnforcement();
+            } else {
+                this.tabLevelLockActive = false;
+                MediaController.stopEnforcement();
+            }
+            return;
+        }
+
         if (this.isIframe) return; // Rest of logic is for main tabs only
+
+        if (request.action === 'challengeCompleted') {
+            if (request.hostname === window.location.hostname) {
+                // FIX 125: Handle cross-tab unlock for Main Frame
+                this.stickyUnlocked = true;
+                this._toastDebounce = false;
+                this.removeOverlay();
+                MediaController.stopEnforcement();
+                this.stateMonitor();
+            }
+            return;
+        }
 
         if (request.action === 'settingsUpdated') {
             const newSettings = request.settings || {};
@@ -651,6 +684,34 @@ class CureVault {
             return;
         }
 
+        if (request.action === 'onFactoryReset') {
+            // FIX 126: Absolute Kill-Switch and Wipe for Factory Reset
+            this._resetGuard = true; 
+            
+            // 1. Stop all execution loops
+            if (this.monitorInterval) clearInterval(this.monitorInterval);
+            if (this.timerInterval) clearInterval(this.timerInterval);
+            if (this.countdownInterval) clearInterval(this.countdownInterval);
+            
+            // 2. Wipe memory
+            try {
+                const keys = Object.keys(sessionStorage);
+                keys.forEach(k => {
+                    if (k.startsWith('cure_')) sessionStorage.removeItem(k);
+                });
+            } catch (e) {}
+
+            // 3. Stop Media
+            MediaController.stopEnforcement();
+            
+            // 4. Remove UI
+            this.removeOverlay();
+            this.removePill();
+            
+            console.debug('[Cure] Factory reset signal received. Tab is now dormant.');
+            return;
+        }
+
         if (request.action === 'dismissResetToast') {
             this.dismissToast();
             return;
@@ -659,14 +720,6 @@ class CureVault {
         if (request.action === 'forceRefresh') {
             this.evaluateAllTriggers().then(() => this.forceRefreshUI());
             return;
-        }
-
-        if (request.action === 'forceMediaPause') {
-            // Only enforce if an overlay is present
-            const root = this.ensureShadow();
-            if (root && root.getElementById(this.overlayId)) {
-                MediaController.startEnforcement();
-            }
         }
 
         // TEST ZONE HANDLERS
@@ -780,7 +833,16 @@ class CureVault {
     async initIframe() {
         if (this.isWhitelisted()) return;
 
-        // 1. Initial State Check
+        // 1. Proactive Tab-Level Check (The "Nuclear" Fallback)
+        this.safeSendMessage({ action: 'getTabLockState' }, (response) => {
+            if (response && response.locked) {
+                this.tabLevelLockActive = true;
+                this.activeIntervention = 'locked';
+                this.renderIframeBlocked(this.ensureShadow(), response.reason || 'limit');
+            }
+        });
+
+        // 2. Initial Site-Level Check (Standard)
         this.safeSendMessage({
             action: 'getLockState',
             hostname: window.location.hostname
@@ -792,6 +854,7 @@ class CureVault {
             }
 
             if (response && response.locked) {
+                 this.activeIntervention = 'locked';
                  this.renderIframeBlocked(this.ensureShadow(), response.lockState?.reason || 'limit');
             }
         });
@@ -801,8 +864,10 @@ class CureVault {
             if (request.action === 'broadcastLockState') {
                 if (request.hostname === window.location.hostname) {
                     if (request.locked) {
+                        this.activeIntervention = 'locked';
                         this.renderIframeBlocked(this.ensureShadow(), 'limit');
                     } else {
+                        this.activeIntervention = null;
                         this.removeOverlay();
                     }
                 }
@@ -811,6 +876,7 @@ class CureVault {
             if (request.action === 'challengeCompleted') {
                 if (request.hostname === window.location.hostname) {
                     // Challenge was completed in another tab - unlock this iframe
+                    this.activeIntervention = null;
                     this.removeOverlay();
                     MediaController.stopEnforcement();
                 }
@@ -1478,6 +1544,7 @@ class CureVault {
     saveTimer() {
         if (!this.isContextValid()) return;
         if (this.isIframe) return; // FIX 86: No timer saving in iframes
+        if (this._resetGuard) return; // FIX 126: Prevent zombie state saving during reset
         const key = `cure_timer_${window.location.hostname}`;
         const now = Date.now();
 
@@ -1818,6 +1885,13 @@ class CureVault {
                     this.mode = 'down';
                 }
                 this.saveTimer();
+                
+                // FIX 125: Broadcast unlock locally to catch any frames currently enforcing media
+                this.safeSendMessage({
+                    action: 'broadcastLockState',
+                    locked: false,
+                    hostname: window.location.hostname
+                });
             });
         }
 
@@ -2106,6 +2180,7 @@ class CureVault {
     renderIframeBlocked(root, reason = null) {
         if (!root) return;
         
+        this.activeIntervention = 'locked';
         // Stop media immediately
         MediaController.startEnforcement();
 
@@ -2765,6 +2840,9 @@ class CureVault {
     async renderTypingLock(overlay) {
         this.isTypingChallengeActive = true; 
         this.dismissToast(); 
+        
+        // FIX: Ensure media remains paused during Typing Challenge
+        MediaController.startEnforcement();
         
         // Wait for global check to ensure currentChallengeText is cleared if needed
         await this.checkGlobalResets(true); 

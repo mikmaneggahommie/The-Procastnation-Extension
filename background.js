@@ -320,6 +320,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Keep channel open for async response
     }
 
+    if (request.action === 'relayDebugTrigger') {
+        const { type, tabId } = request;
+        if (!tabId) {
+            sendResponse({ success: false, error: 'No target tab' });
+            return true;
+        }
+
+        chrome.tabs.sendMessage(tabId, { action: 'debugTrigger', type: type })
+            .then(() => sendResponse({ success: true }))
+            .catch(err => {
+                console.warn('[Cure] Debug relay failed, tab may be stale:', err.message);
+                sendResponse({ success: false, error: 'stale' });
+            });
+        return true;
+    }
+
     if (request.action === 'trackLaunch') {
         const hostname = request.hostname;
         (async () => {
@@ -628,6 +644,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'getTabLockState') {
+        const currentTabId = sender.tab?.id;
+        if (!currentTabId) {
+            sendResponse({ locked: false });
+            return true;
+        }
+
+        // Check if ANY hostname is locked for this tab
+        // We can look at the tab's top-level URL
+        chrome.tabs.get(currentTabId, async (tab) => {
+            if (chrome.runtime.lastError || !tab.url) {
+                sendResponse({ locked: false });
+                return;
+            }
+            try {
+                const url = new URL(tab.url);
+                const hostname = url.hostname.replace(/^www\./, '');
+                const key = `lock_${hostname}`;
+                const result = await storage.local.get([key]);
+                const lockState = result[key];
+                
+                sendResponse({ 
+                    locked: lockState && !lockState.unlocked, 
+                    hostname: hostname,
+                    reason: lockState?.reason 
+                });
+            } catch (e) {
+                sendResponse({ locked: false });
+            }
+        });
+        return true; // Async
+    }
+
     if (request.action === 'getLockState') {
         const { hostname } = request;
         const key = `lock_${hostname}`;
@@ -674,26 +723,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'broadcastLockState') {
-        const { hostname } = request;
-        if (!hostname) {
-             sendResponse({ success: false });
-             return true;
+        const { hostname, locked } = request;
+        const currentTabId = sender.tab?.id;
+
+        const broadcastToAllFrames = (tabId) => {
+            // FIX 127: Deep Broadcast. 
+            // chrome.tabs.sendMessage only targets the TOP frame by default.
+            // We use webNavigation to find all frames (including hidden Server 1/2 players).
+            if (chrome.webNavigation) {
+                chrome.webNavigation.getAllFrames({ tabId: tabId }, (frames) => {
+                    if (chrome.runtime.lastError || !frames) return;
+                    frames.forEach(frame => {
+                        chrome.tabs.sendMessage(tabId, { 
+                            action: 'forceMediaPause', 
+                            locked: locked,
+                            hostname: hostname 
+                        }, { frameId: frame.frameId }).catch(() => {});
+                    });
+                });
+            } else {
+                // Fallback for missing webNavigation (though manifest has it)
+                chrome.tabs.sendMessage(tabId, { 
+                    action: 'forceMediaPause', 
+                    locked: locked,
+                    hostname: hostname 
+                }).catch(() => {});
+            }
+        };
+
+        // 1. Target CURRENT tab (Deep Broadcast)
+        if (currentTabId) {
+            broadcastToAllFrames(currentTabId);
         }
 
-        // Relay to all tabs to ensure cross-frame media pause is enforced
-        // Wrap in try-catch to handle synchronous pattern errors
-        try {
+        // 2. Target OTHER tabs of the same hostname (multi-tab sync)
+        if (hostname) {
             chrome.tabs.query({ url: "*://" + hostname + "/*" }, (tabs) => {
-                if (chrome.runtime.lastError || !tabs) {
-                    // Ignore invalid patterns
-                    return;
-                }
-                for (const tab of tabs) {
-                    chrome.tabs.sendMessage(tab.id, { action: 'forceMediaPause' }).catch(() => {});
-                }
+                if (chrome.runtime.lastError || !tabs) return;
+                tabs.forEach(tab => {
+                    if (tab.id && tab.id !== currentTabId) {
+                        broadcastToAllFrames(tab.id);
+                    }
+                });
             });
-        } catch (e) {
-            console.warn('[Cure] Broadcast pattern error:', e);
         }
         sendResponse({ success: true });
         return true;
@@ -784,25 +856,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 g_dailyStats = null;
                 updateBlockingRules([]);
                 
-                chrome.tabs.query({}, (tabs) => {
-                    for (const tab of tabs) {
-                        if (tab.id && tab.url && (tab.url.startsWith('http') || tab.url.startsWith('https'))) {
-                            chrome.tabs.reload(tab.id, { bypassCache: true }).catch(() => {});
-                        }
-                    }
-                });
                 sendResponse({ success: true });
             });
         };
 
-        chrome.storage.local.clear(() => {
-            chrome.storage.sync.clear(() => {
-                if (chrome.storage.session) {
-                    chrome.storage.session.clear(finalizeReset);
-                } else {
-                    finalizeReset();
+        // 1. PRE-EMPTIVE STOP: Tell all tabs to freeze immediately
+        chrome.tabs.query({}, (tabs) => {
+            for (const tab of tabs) {
+                if (tab.id) {
+                    chrome.tabs.sendMessage(tab.id, { action: 'onFactoryReset' }).catch(() => {});
                 }
-            });
+            }
+
+            // 2. DELAYED WIPE: Wait a moment for tabs to stop their loops, then clear everything
+            setTimeout(() => {
+                chrome.storage.local.clear(() => {
+                    chrome.storage.sync.clear(() => {
+                        if (chrome.storage.session) {
+                            chrome.storage.session.clear(finalizeReset);
+                        } else {
+                            finalizeReset();
+                        }
+                    });
+                });
+            }, 200);
         });
         return true;
     }
@@ -856,18 +933,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 saveStats();
             }
 
-            // 3. Direct unlock to the requesting tab (Fastest feedback)
-            if (tabId) {
-                chrome.tabs.reload(tabId, { bypassCache: false }).catch(() => {});
-            }
-
-            // 4. Force reload all other tabs of this site for consistent reset
+            // 3. Broadcast challenge completion to ALL tabs of this site
+            // This replaces the jittery reload logic with instant, dynamic unlocking.
             try {
-                chrome.tabs.query({ url: "*://" + hostname + "/*" }, (tabs) => {
-                    if (chrome.runtime.lastError) return;
+                chrome.tabs.query({}, (tabs) => {
+                    if (chrome.runtime.lastError || !tabs) return;
                     for (const tab of tabs) {
-                        if (tab.id && tab.id !== tabId) {
-                            chrome.tabs.reload(tab.id).catch(() => {});
+                        try {
+                            // Only target tabs that match the hostname
+                            const tabUrl = new URL(tab.url);
+                            const tabHost = tabUrl.hostname.replace(/^www\./, '');
+                            const targetHost = hostname.replace(/^www\./, '');
+                            
+                            if (tabHost === targetHost || tabHost.endsWith('.' + targetHost)) {
+                                chrome.tabs.sendMessage(tab.id, { 
+                                    action: 'challengeCompleted', 
+                                    hostname: hostname 
+                                }).catch(() => {});
+                            }
+                        } catch (e) {
+                            // Skip non-standard URLs (chrome:// etc)
                         }
                     }
                 });
