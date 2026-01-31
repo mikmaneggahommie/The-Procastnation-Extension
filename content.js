@@ -2228,6 +2228,16 @@ class CureVault {
     handleChallengeBeaten(mins = 5) {
         this.activeIntervention = null;
         this.abortTimerChallenge();
+        
+        this.activeIntervention = null;
+        this.abortTimerChallenge();
+        
+        this.activeIntervention = null;
+        this.abortTimerChallenge();
+        
+        // Clean up old key if it exists (migration)
+        this.safeSendMessage({ action: 'sessionStorageProxy', op: 'remove', key: `cure_snapshot_${window.location.hostname}` });
+        
         // Fix 77: Removed redundant flag reset here.
         MediaController.stopEnforcement();
     }
@@ -2740,10 +2750,11 @@ class CureVault {
         
         // FIX 85: Premature activation bug.
         // We no longer set isTypingChallengeActive here, as we haven't entered a protocol yet.
-        // It's now set in renderDelayLock, renderPasswordLock, and renderTypingLock.
 
-        // Protocols: God Mode > Delay > Password > Typing
+        // Use authoritative settings (Snapshotted by background if locked)
         const p = this.settings.unlockProtocols || {};
+        
+        // Notify background that a challenge has officially started on this tab
         
         // Notify background that a challenge has officially started on this tab
         this.safeSendMessage({ action: 'challengeStarted', hostname: window.location.hostname });
@@ -2943,8 +2954,10 @@ class CureVault {
         
         sessionStorage.setItem('cure_typing_active_session', 'true');
 
+        // Settings are already snapshotted by the background script if site is locked.
+        const typingSettings = this.settings.unlockProtocols?.typing || {};
+        const difficulty = typingSettings.difficulty || this.settings.typingDifficulty || 50;
         const reward = this.settings.unlockReward || 5;
-        const difficulty = this.settings.unlockProtocols?.typing?.difficulty || this.settings.typingDifficulty || 50;
 
         overlay.innerHTML = `
             <div class="cure-overlay-container" style="padding-top: 30px;">

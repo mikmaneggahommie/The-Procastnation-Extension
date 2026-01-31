@@ -4,6 +4,16 @@
 // GLOBAL STATE CACHE (Concurrency Fix)
 let g_dailyStats = null;
 let g_settingsCache = null;
+let g_lockSnapshots = {}; // Persistent Rule Snapshots for anti-cheat
+
+// Helper: Persist Snapshots
+const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
+
+// Load Snapshots on Start
+chrome.storage.local.get('lockSnapshots', res => {
+    if (res.lockSnapshots) g_lockSnapshots = res.lockSnapshots;
+});
+
 
 // Promise-based storage helpers for cleaner async/await
 const storage = {
@@ -280,53 +290,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
     }
 
-    // --- SESSION STORAGE PROXY (FIX FOR CONTENT SCRIPT RESTRICTIONS) ---
+    // --- STORAGE PROXY (Local/Session) ---
     if (request.action === 'sessionStorageProxy') {
-        const { op, key, value } = request;
-        if (!chrome.storage.session) {
-            sendResponse({ error: 'Session storage unavailable' });
+        const { op, key, value, storageArea } = request;
+        
+        // Default to session for backward compatibility, but allow 'local' for persistence
+        const storage = (storageArea === 'local') ? chrome.storage.local : chrome.storage.session;
+
+        // Fallback for session storage if undefined in some contexts (though usually available)
+        if (!storage) {
+            sendResponse({ error: 'Storage area unavailable' });
             return;
         }
 
         if (op === 'get') {
-            chrome.storage.session.get(key).then(res => sendResponse({ value: res[key] }));
+            storage.get(key).then(res => sendResponse({ value: res[key] }));
         } else if (op === 'set') {
-            chrome.storage.session.set({ [key]: value }).then(() => sendResponse({ success: true }));
+            storage.set({ [key]: value }).then(() => sendResponse({ success: true }));
         } else if (op === 'remove') {
-            chrome.storage.session.remove(key).then(() => sendResponse({ success: true }));
+            storage.remove(key).then(() => sendResponse({ success: true }));
         }
         return true; // Async
     }
 
     if (request.action === 'getSettings') {
-        chrome.storage.sync.get('settings', (result) => {
-            if (chrome.runtime.lastError) {
-                console.error('[Cure] Storage Internal Error:', chrome.runtime.lastError);
-                sendResponse({ settings: DEFAULT_SETTINGS }); // Fallback
-                return;
-            }
-            const settings = { ...DEFAULT_SETTINGS, ...result.settings };
-            
-            // Deep merge nested structures to preserve keys
-            if (result.settings?.unlockProtocols) {
-                settings.unlockProtocols = { ...DEFAULT_SETTINGS.unlockProtocols, ...result.settings.unlockProtocols };
-            }
-            if (result.settings?.hardLockTriggers) {
-                settings.hardLockTriggers = { ...DEFAULT_SETTINGS.hardLockTriggers, ...result.settings.hardLockTriggers };
-            }
-            if (result.settings?.pauseTriggers) {
-                settings.pauseTriggers = { ...DEFAULT_SETTINGS.pauseTriggers, ...result.settings.pauseTriggers };
-            }
-            if (result.settings?.reminderTriggers) {
-                settings.reminderTriggers = { ...DEFAULT_SETTINGS.reminderTriggers, ...result.settings.reminderTriggers };
-            }
-            if (result.settings?.passiveReward) {
-                settings.passiveReward = { ...DEFAULT_SETTINGS.passiveReward, ...result.settings.passiveReward };
+        const sendEffectiveSettings = (currentSettings) => {
+            let hostname = request.hostname;
+            if (!hostname && sender.tab && sender.tab.url) {
+                try {
+                    hostname = new URL(sender.tab.url).hostname;
+                } catch (e) {}
             }
             
-            sendResponse({ settings });
-        });
-        return true; // Keep channel open for async response
+            let finalSettings = currentSettings || DEFAULT_SETTINGS;
+            if (hostname) {
+                const cleanHost = hostname.replace(/^www\./, '');
+                // AUTHORITATIVE SNAPSHOT: If locked, site ONLY sees the frozen rules.
+                if (g_lockSnapshots[cleanHost]) {
+                    finalSettings = g_lockSnapshots[cleanHost];
+                }
+            }
+            sendResponse({ settings: finalSettings });
+        };
+
+        if (g_settingsCache) {
+            sendEffectiveSettings(g_settingsCache);
+        } else {
+            ensureSettings().then(sendEffectiveSettings);
+        }
+        return true; 
     }
 
     if (request.action === 'relayDebugTrigger') {
@@ -557,26 +569,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'updateSettings') {
-        chrome.storage.sync.set({ settings: request.settings }, () => {
+        const newSettings = request.settings;
+        chrome.storage.sync.set({ settings: newSettings }, () => {
             if (chrome.runtime.lastError) {
                 console.error('[Cure] Save Failed:', chrome.runtime.lastError);
                 sendResponse({ success: false, error: chrome.runtime.lastError.message });
                 return;
             }
 
-            // Sync Network Blocking Rules
-            updateBlockingRules(request.settings?.blacklist || []);
+            g_settingsCache = newSettings; // Update live cache
+            updateBlockingRules(newSettings?.blacklist || []);
 
             // Propagate updates to all active tabs
             chrome.tabs.query({}, (tabs) => {
                 for (const tab of tabs) {
-                    if (tab.id) {
-                        chrome.tabs.sendMessage(tab.id, {
-                            action: 'settingsUpdated',
-                            settings: request.settings
-                        }).catch(() => {
-                            // Suppress errors for inactive/restricted tabs (expected behavior)
-                        });
+                    if (tab.id && tab.url) {
+                        try {
+                            const url = new URL(tab.url);
+                            const hostname = url.hostname.replace(/^www\./, '');
+                            // AUTHORITATIVE BROADCAST: Send tab-specific frozen settings if locked.
+                            const finalSettings = g_lockSnapshots[hostname] || newSettings;
+                            chrome.tabs.sendMessage(tab.id, {
+                                action: 'settingsUpdated',
+                                settings: finalSettings
+                            }).catch(() => {});
+                        } catch (e) {
+                            // Fallback for chrome:// etc
+                            chrome.tabs.sendMessage(tab.id, {
+                                action: 'settingsUpdated',
+                                settings: newSettings
+                            }).catch(() => {});
+                        }
                     }
                 }
             });
@@ -654,6 +677,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             reason: reason || 'limit',
             unlocked: false
         };
+
+        const cleanHost = hostname.replace(/^www\./, '');
+        // ANTI-CHEAT: Snapshot rules NOW. This site is stuck with these until payment.
+        if (!g_lockSnapshots[cleanHost]) {
+            g_lockSnapshots[cleanHost] = JSON.parse(JSON.stringify(g_settingsCache || DEFAULT_SETTINGS));
+            saveSnapshots();
+        }
 
         chrome.storage.local.set({ [key]: lockState }, () => {
             sendResponse({ success: true, lockState });
@@ -840,6 +870,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             passiveData.rewardBank = 0;
             updates['passiveData'] = passiveData;
 
+            // ANTI-CHEAT: Debt Paid. Clear the snapshot.
+            delete g_lockSnapshots[hostname];
+            saveSnapshots();
+
             chrome.storage.local.set(updates, () => {
                 // FIX 98: Deep Broadcast. 
                 // We must target ALL frames in ALL tabs to ensure iframes reveal content.
@@ -870,6 +904,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'clearLockState') {
         const { hostname } = request;
         const key = `lock_${hostname}`;
+        
+        // Anti-Cheat: Also clear snapshot if explicitly cleared
+        delete g_lockSnapshots[hostname];
+        saveSnapshots();
+
         chrome.storage.local.remove(key, () => {
             sendResponse({ success: true });
         });
