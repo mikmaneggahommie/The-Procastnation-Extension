@@ -180,7 +180,7 @@ const MediaController = {
 function normalizeTypingText(str) {
     if (!str) return "";
     return str
-        .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A\u02BC\u02BB\u02B9\u00B4\u0060\u2032\u2035\uFF07]/g, "'") // Nuclear Coverage: Smart Quotes, Primes, Fullwidth
+        .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A\u02BC\u02BB\u02B9\u00B4\u0060\u2032\u2035\u2019\uFF07\u02BD\u02C8]/g, "'") // Nuclear Coverage: Smart Quotes, Primes, Fullwidth, Modified Letters
         .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033\u2036\uFF02]/g, '"') // Nuclear Coverage: Double Smart, Double Primes, Fullwidth
         .replace(/[\u2013\u2014\u2010\u2011\u2012\u2212]/g, "-") // En, Em, Hyphen, Non-breaking hyphen, Figure dash, Minus
         .replace(/\u00A0/g, " "); // Non-breaking spaces
@@ -3089,7 +3089,9 @@ class CureVault {
 
                 charSpans.forEach((span, i) => {
                     if (i < val.length) {
-                        if (val[i] === text[i]) {
+                        // FIX: Double-Safe Normalization
+                        // We normalize both sides again just in case a character slipped through the first pass.
+                        if (normalizeTypingText(val[i]) === normalizeTypingText(text[i])) {
                             span.className = 'cure-char correct';
                         } else {
                             span.className = 'cure-char error';
