@@ -4,7 +4,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 ### 📅 Current Golden State: Jan 31, 2026
 
-**Commit:** `[LATEST]`
+**Commit:** `d528535`
 **Status:** BACKGROUND AUTHORITATIVE LOCK. Centralized rule enforcement that prevents mid-lock settings cheats.
 
 ---
@@ -13,7 +13,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
-| Jan 31, 2026 | **Anti-Cheat: Background Authority** | `[LATEST]`    | Centralized rule enforcement in background.js to prevent settings bypass.                  |
+| Jan 31, 2026 | **Anti-Cheat: Background Authority** | `d528535`     | Centralized rule enforcement in background.js to prevent settings bypass.                  |
 | Jan 31, 2026 | **Performance & Stability Overhaul** | `e136310`     | Fixed jittery resets, video loops, input bugs, and optimized I/O.                          |
 | Jan 31, 2026 | **Fix: Jittery Redirect & Input**    | `3fe8c70`     | Fixed reset loops, apostrophe typing, and perfected iframe redirects.                      |
 | Jan 31, 2026 | **Feature: Robust Redirect & Sync**  | `3fe8c70`     | Restored tab-redirect for iframes; implemented Deep Broadcast sync and robust auto-close.  |
