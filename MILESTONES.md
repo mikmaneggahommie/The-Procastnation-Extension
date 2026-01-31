@@ -13,6 +13,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                            | Stable Commit | Description                                                                                |
 | :----------- | :--------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
+| Jan 31, 2026 | **Fix: Navigation Bypass Lock**    | `[LATEST]`    | Fixed vulnerability where back/forward navigation could bypass the lock.                   |
 | Jan 31, 2026 | **Fix: Nuclear Media Enforcement** | `[LATEST]`    | Force-pausing media in ALL frames (including cross-domain iframes) using webNavigation.    |
 | Jan 31, 2026 | **Fix: MacOS Smart Quote Support** | `[LATEST]`    | Expanded normalization for apostrophes to support MacOS typing challenges.                 |
 | Jan 30, 2026 | **Fix: Debug Trigger Relay**       | `[LATEST]`    | Moved Test Zone triggers to background relay to handle stale connections.                  |

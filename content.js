@@ -263,8 +263,10 @@ class CureVault {
         this.handleMouseMove = this.handleMouseMove.bind(this);
         
         // Fix 81: Final Registration Pass.
-        window.addEventListener('beforeunload', this.boundCleanup);
-        window.addEventListener('pagehide', this.boundCleanup);
+        // REMOVED: beforeunload and pagehide cleanup.
+        // These were causing the extension to "commit suicide" during back/forward navigation,
+        // allowing users to bypass the lock by navigating away and back.
+        // We now rely on the Singleton pattern at the top of the file for re-injection cleanup.
         
         if (document.readyState === 'loading') {
             window.addEventListener('DOMContentLoaded', this.handleDOMContentLoaded);
@@ -312,8 +314,15 @@ class CureVault {
     }
 
     handlePageShow(event) {
-        if (event.persisted && typeof this.evaluateAllTriggers === 'function') {
-            console.log('[Cure] BFCache restore detected, re-evaluating triggers...');
+        // ALWAYS re-evaluate on pageshow to catch BFCache restorations and "soft" navigations
+        if (typeof this.evaluateAllTriggers === 'function') {
+            console.log('[Cure] Page revealed, re-evaluating state...');
+            
+            // Ensure monitor is running (in case it was stopped or throttled)
+            if (!this.timerInterval) {
+                this.stateMonitor();
+            }
+
             this.evaluateAllTriggers().then(() => {
                 this.forceRefreshUI();
             });
