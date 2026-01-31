@@ -1946,9 +1946,16 @@ class CureVault {
     }
 
 
-    stateHardLock(reason = null, forced = false) {
+    stateHardLock(reason = 'limit', forced = false) {
         if (!this.isContextValid()) return;
         
+        // FIX: Idempotency Guard. 
+        // Prevents the "heartbeat" gong sound and screen flicker every 1 second.
+        if (this.activeIntervention === 'locked' && !forced) return;
+        
+        // Fix 94: Play sound ONLY on initialization, not on every heartbeat tick.
+        if (this.settings.soundEnabled !== false) SoundEngine.playChime('error');
+
         // FIX 81: Removed stickyUnlocked check here.
         // The proper protection logic is now in checkAnyTrigger(),
         // which clears stickyUnlocked when reward time is consumed.
@@ -1962,8 +1969,6 @@ class CureVault {
                 return;
             }
         }
-
-        if (this.settings.soundEnabled !== false) SoundEngine.playChime('error');
 
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
@@ -2197,22 +2202,30 @@ class CureVault {
     renderIframeBlocked(root, reason = null) {
         if (!root) return;
         
+        // FIX: Re-render Guard for Iframes.
+        // Prevents the heartbeat from wiping the button while you are trying to click it.
+        const existing = root.getElementById(this.overlayId);
+        if (existing && existing.dataset.mode === 'locked' && existing.dataset.reason === (reason || 'limit')) {
+            return;
+        }
+
         this.activeIntervention = 'locked';
         // Stop media immediately
         MediaController.startEnforcement();
 
-        // Ensure only one overlay exists
-        const existing = root.getElementById(this.overlayId);
         if (existing) existing.remove();
         
         const overlay = document.createElement('div');
         overlay.id = this.overlayId;
+        overlay.dataset.mode = 'locked';
+        overlay.dataset.reason = reason || 'limit';
         // Responsive Layout for embeds (often small)
         overlay.style.cssText = `
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(245, 245, 247, 0.98); 
             backdrop-filter: blur(10px);
             z-index: 2147483648;
+            pointer-events: auto;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             padding: 10px; box-sizing: border-box; text-align: center;
