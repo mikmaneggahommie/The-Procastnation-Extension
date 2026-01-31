@@ -3147,6 +3147,14 @@ class CureVault {
             // 🛑 CRITICAL: Clear Global Reset Flag on Success
             // This is the ONLY safe place to clear it.
             this.safeSendMessage({ action: 'clearResetFlag', hostname: window.location.hostname });
+
+            // FIX: Silent Auto-Close for Challenges
+            // Immediately trigger close if the URL flag is present.
+            if (window.location.search.includes('cure_challenge=true')) {
+                setTimeout(() => {
+                    chrome.runtime.sendMessage({ action: 'closeMyTab' });
+                }, 1500);
+            }
         }
 
         if (!this.shadowRoot) return;
@@ -3161,14 +3169,18 @@ class CureVault {
             </a>`;
         }).join('');
 
+        const isAutoClose = window.location.search.includes('cure_challenge=true');
+        const subtitle = isAutoClose 
+            ? `✨ Success! Returning you to your page in 2s...` 
+            : `You have unlocked <b style="color:#1D1D1F;">${mins}min</b>.<br>The clock is ticking backwards now.`;
+
         overlay.innerHTML = `
             <div class="cure-overlay-container">
                 <div class="cure-header">
-                    <div style="font-size:42px; margin-bottom:4px;">🔓</div>
-                    <h1 class="cure-title-large">Strict Lock Lifted</h1>
+                    <div style="font-size:42px; margin-bottom:4px;">${isAutoClose ? '✨' : '🔓'}</div>
+                    <h1 class="cure-title-large">${isAutoClose ? 'Task Complete' : 'Strict Lock Lifted'}</h1>
                     <p class="cure-subtitle" style="max-width:400px; margin: 4px auto 0 auto;">
-                        You have unlocked <b style="color:#1D1D1F;">${mins}min</b>.<br>
-                        The clock is ticking backwards now.
+                        ${subtitle}
                     </p>
                 </div>
 
