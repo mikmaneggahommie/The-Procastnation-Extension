@@ -539,6 +539,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'closeMyTab') {
+        if (sender.tab && sender.tab.id) {
+            chrome.tabs.remove(sender.tab.id);
+        }
+        sendResponse({ success: true });
+        return true;
+    }
+
     if (request.action === 'updateSettings') {
         chrome.storage.sync.set({ settings: request.settings }, () => {
             if (chrome.runtime.lastError) {

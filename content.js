@@ -1931,6 +1931,22 @@ class CureVault {
         // Fix 72/73: The unlocking already happened in unlockSession.
         // This button now just cleans up the UI.
         sessionStorage.removeItem('cure_success_page_active');
+
+        // FIX: Auto-Close Challenge Tab
+        // If this tab was opened specifically to unlock a video embed,
+        // we close it automatically to keep the workspace clean.
+        if (window.location.search.includes('cure_challenge=true')) {
+            this.renderOverlay('locked', 'Closing challenge tab...');
+            const msg = document.createElement('div');
+            msg.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); color:white; font-size:24px; z-index:2147483647; text-align:center;';
+            msg.innerHTML = '✨ Success! <br><span style="font-size:16px; opacity:0.8;">Returning you to your page...</span>';
+            document.body.appendChild(msg);
+
+            setTimeout(() => {
+                chrome.runtime.sendMessage({ action: 'closeMyTab' });
+            }, 1500);
+            return;
+        }
         
         if (this.settings.unlockRewardType === 'session' || this.settings.unlockRewardType === 'unlimited') {
              this.safeSendMessage({ action: 'startRewardSession', hostname: window.location.hostname }, () => {
@@ -2273,7 +2289,21 @@ class CureVault {
                 
                 // Extract the base site URL from iframe src
                 const hostname = window.location.hostname;
-                const targetUrl = `https://${hostname}`;
+                let targetUrl = `https://${hostname}`;
+
+                // FIX: Deep-Link Unlocking for YouTube
+                // If this is a YouTube embed, open the specific video instead of the homepage.
+                if (hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com')) {
+                    const path = window.location.pathname;
+                    const match = path.match(/\/embed\/([^/?]+)/);
+                    if (match && match[1]) {
+                        targetUrl = `https://www.youtube.com/watch?v=${match[1]}`;
+                    }
+                }
+
+                // Add the auto-close flag to the URL
+                const joinChar = targetUrl.includes('?') ? '&' : '?';
+                targetUrl += `${joinChar}cure_challenge=true`;
                 
                 // FIX 102: Always use background script to open tab.
                 // This bypasses iframe sandbox restrictions (allow-popups) and popup blockers.
