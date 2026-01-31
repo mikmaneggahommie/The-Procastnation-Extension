@@ -88,6 +88,7 @@ const SoundEngine = {
  */
 const MediaController = {
     interval: null,
+    observer: null,
     enforcedElements: new Map(), // Use Map to store { muted, volume }
     handleMediaEvent(e) {
         const el = e.target;
@@ -97,74 +98,99 @@ const MediaController = {
             el.volume = 0;
         } catch (err) { /* Ignore */ }
     },
+    // FIX: Performance Optimization. 
+    // Avoid querySelectorAll('*') which is O(N) where N is total DOM elements.
+    // Instead only target elements that can be media or have shadow roots.
     findMediaDeep(root = document) {
         let found = [];
-        // 1. Regular DOM
+        // 1. Target media elements directly
         found.push(...root.querySelectorAll('video, audio'));
-        // 2. Shadow DOM
-        const allElements = root.querySelectorAll('*');
-        for (const el of allElements) {
+        
+        // 2. Recursively check Shadow DOMs
+        // We only check elements that potentially have shadow roots for performance
+        const hosts = root.querySelectorAll('*');
+        for (const el of hosts) {
             if (el.shadowRoot) {
                 found.push(...this.findMediaDeep(el.shadowRoot));
             }
         }
         return found;
     },
+    enforceElement(el) {
+        try {
+            if (!this.enforcedElements.has(el)) {
+                this.enforcedElements.set(el, {
+                    muted: el.muted,
+                    volume: el.volume
+                });
+                el.addEventListener('play', this.handleMediaEvent);
+                el.addEventListener('playing', this.handleMediaEvent);
+            }
+            if (!el.paused) el.pause();
+            el.muted = true;
+            el.volume = 0;
+        } catch (e) { /* Ignore */ }
+    },
     pauseAll() {
-        this.findMediaDeep().forEach(el => {
-            try {
-                // Proactive Enforcement: Attach listeners if not already tracked
-                if (!this.enforcedElements.has(el)) {
-                    // Capture original state before we touch it
-                    this.enforcedElements.set(el, {
-                        muted: el.muted,
-                        volume: el.volume
-                    });
-                    el.addEventListener('play', this.handleMediaEvent);
-                    el.addEventListener('playing', this.handleMediaEvent);
-                }
-
-                if (!el.paused) el.pause();
-                el.muted = true;
-                el.volume = 0;
-                
-            } catch (e) { /* Ignore media interaction errors */ }
-        });
+        this.findMediaDeep().forEach(el => this.enforceElement(el));
     },
     startEnforcement() {
         if (this.interval) clearInterval(this.interval);
-        
-        // FIX 106 & 123: Integrity Guard. 
-        // Never enforce media if site is whitelisted.
-        // Also skip if site is not blacklisted UNLESS an active intervention or tab-level lock is active.
-        // This ensures neutral sites (and their players) are paused when the parent tab is locked.
+        if (this.observer) this.observer.disconnect();
+
         const vault = window.__CURE_VAULT_INSTANCE__;
         const isInterventionActive = vault && (vault.activeIntervention || vault.tabLevelLockActive);
         const isWhitelisted = vault && vault.isWhitelisted();
         const isBlacklisted = vault && vault.isBlacklisted();
 
-        if (isWhitelisted || (!isBlacklisted && !isInterventionActive)) {
-            return;
-        }
+        if (isWhitelisted || (!isBlacklisted && !isInterventionActive)) return;
 
+        // 1. Initial Sweep
         this.pauseAll();
-        // High frequency check to catch auto-resuming players that might bypass listeners
+
+        // 2. Event-Driven Enforcement (MutationObserver)
+        // This is extremely efficient compared to high-frequency polling.
+        this.observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) { // Element
+                        if (node.tagName === 'VIDEO' || node.tagName === 'AUDIO') {
+                            this.enforceElement(node);
+                        } else {
+                            // Elements inside the tree might be media
+                            node.querySelectorAll('video, audio').forEach(el => this.enforceElement(el));
+                        }
+                    }
+                });
+            }
+        });
+        this.observer.observe(document.documentElement, { childList: true, subtree: true });
+
+        // 3. Low-Frequency Fail-safe (2000ms)
+        // Only checks already known elements and performs a shallow sweep.
         this.interval = setInterval(() => {
-            this.pauseAll();
-        }, 200);
+            this.enforcedElements.forEach((_, el) => {
+                if (!el.paused) el.pause();
+                el.muted = true;
+            });
+            // Periodically check for elements stuck in Shadow DOMs that might have been missed
+            if (Math.random() > 0.8) this.pauseAll();
+        }, 2000);
     },
     stopEnforcement() {
         if (this.interval) {
             clearInterval(this.interval);
             this.interval = null;
         }
-        // Cleanup listeners AND RESTORE STATE
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
+        // Restore state
         this.enforcedElements.forEach((original, el) => {
             try {
                 el.removeEventListener('play', this.handleMediaEvent);
                 el.removeEventListener('playing', this.handleMediaEvent);
-                
-                // Restore original state
                 el.muted = original.muted;
                 el.volume = original.volume;
             } catch (e) { /* Ignore */ }
