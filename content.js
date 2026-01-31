@@ -611,11 +611,6 @@ class CureVault {
             return;
         }
 
-        if (request.action === 'startParentChallenge') {
-            // This is ONLY called on the TOP frame.
-            this.renderTypingLock(this.ensureShadow());
-            return;
-        }
 
         if (this.isIframe) return; // Rest of logic is for main tabs only
 
@@ -2314,28 +2309,24 @@ class CureVault {
                 e.preventDefault();
                 e.stopPropagation();
 
-                // FIX: Full-Page Iframe Unlock (The Relay).
-                // Instead of rendering inside the tiny iframe, we ask the background script 
-                // to trigger the typing challenge on the TOP frame of this tab.
                 const originalText = btn.innerText;
-                btn.innerText = "Requesting Unlock...";
+                btn.innerText = "Challenge Active in New Tab...";
                 btn.style.opacity = "0.7";
                 btn.disabled = true;
 
-                this.safeSendMessage({ action: 'requestParentChallenge' }, (response) => {
-                    if (chrome.runtime.lastError || (response && response.error)) {
-                        btn.innerText = "Error - Refresh!";
-                    }
-                });
+                // Open the main page with a challenge flag
+                // This ensures we get the full-screen typing challenge in a new tab
+                const challengeUrl = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'cure_challenge=true';
+                window.open(challengeUrl, '_blank');
 
-                // Fail-safe reset
+                // Fallback: If no response in 10s (user closed tab or something), reset button
                 setTimeout(() => {
-                    if (btn.innerText === "Requesting Unlock...") {
+                    if (btn.innerText === "Challenge Active in New Tab...") {
                         btn.innerText = originalText;
                         btn.style.opacity = "1";
                         btn.disabled = false;
                     }
-                }, 3000);
+                }, 10000);
             };
         }
     }
@@ -3208,6 +3199,13 @@ class CureVault {
                 finBtn.onclick = () => {
                     this.confirmUnlock(mins);
                 };
+            }
+            
+            // FIX: Reliable Auto-Close Trigger
+            if (isAutoClose) {
+                setTimeout(() => {
+                    this.confirmUnlock(mins);
+                }, 2000);
             }
         }
     }

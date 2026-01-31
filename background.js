@@ -779,14 +779,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    if (request.action === 'requestParentChallenge') {
-        const tabId = sender.tab?.id;
-        if (tabId) {
-            // Relay to frame 0 (TOP)
-            chrome.tabs.sendMessage(tabId, { action: 'startParentChallenge' }, { frameId: 0 }).catch(() => {});
-            sendResponse({ success: true });
-        } else {
-            sendResponse({ error: 'No tab found' });
+
+    if (request.action === 'closeMyTab') {
+        if (sender.tab?.id) {
+            chrome.tabs.remove(sender.tab.id).catch(() => {});
         }
         return true;
     }
@@ -836,22 +832,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             updates['passiveData'] = passiveData;
 
             chrome.storage.local.set(updates, () => {
-                // FIX 98: Broadcast challenge completion to all tabs (for iframes)
-                try {
-                    chrome.tabs.query({}, (tabs) => {
-                        if (chrome.runtime.lastError || !tabs) return;
-                        for (const tab of tabs) {
-                            if (tab.id) {
-                                chrome.tabs.sendMessage(tab.id, { 
-                                    action: 'challengeCompleted', 
-                                    hostname: hostname 
-                                }).catch(() => {});
-                            }
+                // FIX 98: Deep Broadcast. 
+                // We must target ALL frames in ALL tabs to ensure iframes reveal content.
+                chrome.tabs.query({}, (tabs) => {
+                    if (chrome.runtime.lastError || !tabs) return;
+                    for (const tab of tabs) {
+                        if (tab.id) {
+                            // Find all frames for this tab
+                            chrome.webNavigation.getAllFrames({ tabId: tab.id }, (frames) => {
+                                if (chrome.runtime.lastError || !frames) return;
+                                frames.forEach(frame => {
+                                    chrome.tabs.sendMessage(tab.id, { 
+                                        action: 'challengeCompleted', 
+                                        hostname: hostname 
+                                    }, { frameId: frame.frameId }).catch(() => {});
+                                });
+                            });
                         }
-                    });
-                } catch (e) {
-                    console.warn('[Cure] Challenge broadcast error:', e);
-                }
+                    }
+                });
 
                 sendResponse({ success: true, consumed });
             });
