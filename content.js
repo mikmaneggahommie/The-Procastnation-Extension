@@ -2235,6 +2235,7 @@ class CureVault {
                     margin-top: 12px; font-size: min(13px, 3.5vw); color: #ffffff;
                     font-weight: 600; background: #1d1d1f; padding: 8px 16px; border-radius: 12px;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.15); border: none; cursor: pointer;
+                    transition: all 0.2s ease;
                 ">Unlock →</button>
                 <style>
                     @media (max-height: 120px) {
@@ -2245,13 +2246,17 @@ class CureVault {
         `;
         
         root.appendChild(overlay);
-        // Do NOT set overflow:hidden on body for iframes
         
         const btn = overlay.querySelector('#cure-iframe-unlock-btn');
         if (btn) {
             btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+
+                const originalText = btn.innerText;
+                btn.innerText = "Opening Challenge...";
+                btn.style.opacity = "0.7";
+                btn.disabled = true;
                 
                 // Extract the base site URL from iframe src
                 const hostname = window.location.hostname;
@@ -2263,11 +2268,25 @@ class CureVault {
                     chrome.runtime.sendMessage({ 
                         action: 'openTab', 
                         url: targetUrl 
+                    }, (res) => {
+                        if (chrome.runtime.lastError) {
+                            btn.innerText = "Error - Refresh!";
+                            console.error('[Cure] Iframe unlock failed:', chrome.runtime.lastError);
+                        }
                     });
                 } catch (err) {
-                    // Fallback to window.open if extension context is somehow invalid (rare)
-                    window.open(targetUrl, '_blank');
+                    btn.innerText = "Error!";
+                    console.error('[Cure] Runtime connection lost:', err);
                 }
+
+                // Fallback: If no response in 3s, reset button
+                setTimeout(() => {
+                    if (btn.innerText === "Opening Challenge...") {
+                        btn.innerText = originalText;
+                        btn.style.opacity = "1";
+                        btn.disabled = false;
+                    }
+                }, 3000);
             };
         }
     }
@@ -2401,7 +2420,6 @@ class CureVault {
             if (mode === 'locked') {
                 this.renderIframeBlocked(this.ensureShadow(), 'limit');
             }
-            // For breathing/reminder modes, do NOTHING - just return silently
             return;
         }
         
@@ -2613,12 +2631,29 @@ class CureVault {
                     }
                     
                     if (this.isIframe) {
-                        // FIX: Seamless Iframe Unlock. 
-                        // Open the target site in a new tab to handle the protocol part (typing/delay/password).
-                        // The iframe will automatically reveal itself when challenge is completed.
+                        const originalText = unlockBtn.innerText;
+                        unlockBtn.innerText = "Opening Challenge...";
+                        unlockBtn.style.opacity = "0.7";
+                        unlockBtn.disabled = true;
+
                         const hostname = window.location.hostname;
                         const targetUrl = `https://${hostname}`;
-                        chrome.runtime.sendMessage({ action: 'openTab', url: targetUrl });
+                        
+                        chrome.runtime.sendMessage({ action: 'openTab', url: targetUrl }, (res) => {
+                            if (chrome.runtime.lastError) {
+                                unlockBtn.innerText = "Error - Refresh!";
+                                console.error("[Cure] Iframe unlock failed:", chrome.runtime.lastError);
+                            }
+                        });
+                        
+                        // Fallback: If no response in 3s, reset button
+                        setTimeout(() => {
+                            if (unlockBtn.innerText === "Opening Challenge...") {
+                                unlockBtn.innerText = originalText;
+                                unlockBtn.style.opacity = "1";
+                                unlockBtn.disabled = false;
+                            }
+                        }, 3000);
                     } else {
                         await this.renderHardLock(overlay);
                     }
