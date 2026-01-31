@@ -566,23 +566,26 @@ class CureVault {
             } else {
                 this.tabLevelLockActive = false;
                 MediaController.stopEnforcement();
+                this.removeOverlay(); // Ensure overlay is removed on unlock
+            }
+            return;
+        }
+
+        if (request.action === 'challengeCompleted') {
+            if (request.hostname === window.location.hostname) {
+                // FIX 125: Handle cross-tab unlock for both Main Frame and Iframes
+                this.stickyUnlocked = true;
+                this._toastDebounce = false;
+                this.removeOverlay();
+                MediaController.stopEnforcement();
+                if (!this.isIframe) {
+                    this.stateMonitor();
+                }
             }
             return;
         }
 
         if (this.isIframe) return; // Rest of logic is for main tabs only
-
-        if (request.action === 'challengeCompleted') {
-            if (request.hostname === window.location.hostname) {
-                // FIX 125: Handle cross-tab unlock for Main Frame
-                this.stickyUnlocked = true;
-                this._toastDebounce = false;
-                this.removeOverlay();
-                MediaController.stopEnforcement();
-                this.stateMonitor();
-            }
-            return;
-        }
 
         if (request.action === 'settingsUpdated') {
             const newSettings = request.settings || {};
@@ -2507,10 +2510,13 @@ class CureVault {
              if (location.ancestorOrigins && location.ancestorOrigins.length > 0) isIframe = true;
         } catch(e) { isIframe = true; }
 
+        // REMOVED diversion: Allow Decision Screen in Iframes with Responsive UI
+        /*
         if (isIframe && !forced) {
             this.renderIframeBlocked(root, reason);
             return;
         }
+        */
 
         this.activeIntervention = 'locked';
         const overlay = root.getElementById(this.overlayId);
@@ -2606,7 +2612,16 @@ class CureVault {
                         this._lastResetToastShown = false;
                     }
                     
-                    await this.renderHardLock(overlay);
+                    if (this.isIframe) {
+                        // FIX: Seamless Iframe Unlock. 
+                        // Open the target site in a new tab to handle the protocol part (typing/delay/password).
+                        // The iframe will automatically reveal itself when challenge is completed.
+                        const hostname = window.location.hostname;
+                        const targetUrl = `https://${hostname}`;
+                        chrome.runtime.sendMessage({ action: 'openTab', url: targetUrl });
+                    } else {
+                        await this.renderHardLock(overlay);
+                    }
                 };
             }
         }

@@ -13,6 +13,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
+| Jan 31, 2026 | **Feature: Seamless Iframe Unlock**  | `[LATEST]`    | Integrated decision screen into iframes with responsive UI and instant reveal.             |
 | Jan 31, 2026 | **Shield Reinforced (Golden State)** | `2d41daa`     | Comprehensive fix for typing stability, navigation bypass, and deep-frame media pause.     |
 | Jan 31, 2026 | **Fix: Typing Challenge Stability**  | `2d41daa`     | Prevented 'heartbeat' re-renders from wiping input during challenges.                      |
 | Jan 31, 2026 | **Fix: Nuclear Quote Normalization** | `2d41daa`     | Expanded unicode coverage for MacOS/International quotes and dashes.                       |

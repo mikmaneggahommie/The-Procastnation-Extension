@@ -18,6 +18,62 @@
   pointer-events: auto; /* Fix 67: Ensure overlay stays interactive while host is click-through */
 }
 
+/* RESPONSIVE OVERRIDES (Small Screens / Iframes) */
+@media (max-height: 500px) {
+  .cure-overlay-container {
+      padding: 20px 10px 20px 10px !important;
+      min-height: 100% !important;
+      justify-content: center !important;
+  }
+  .cure-title-large {
+      font-size: 20px !important;
+  }
+  .cure-subtitle {
+      font-size: 13px !important;
+  }
+  .cure-header {
+      margin-bottom: 12px !important;
+  }
+  .cure-shortcuts-container {
+      gap: 8px !important;
+      margin-top: 5px !important;
+  }
+  .cure-shortcuts-label {
+      font-size: 18px !important;
+  }
+  .cure-hand-pointer {
+      font-size: 30px !important;
+      display: none !important; /* Save space */
+  }
+  .cure-shortcut-card {
+      padding: 8px 16px !important;
+      font-size: 14px !important;
+  }
+  .cure-shortcut-name {
+      font-size: 14px !important;
+  }
+  .cure-btn-unlock {
+      min-width: 200px !important;
+      height: 44px !important;
+      padding: 8px 20px !important;
+      font-size: 14px !important;
+  }
+  .cure-logo {
+      font-size: 30px !important;
+      margin-bottom: 2px !important;
+  }
+}
+
+@media (max-width: 350px) {
+  .cure-shortcut-card {
+      width: 100% !important;
+  }
+  .cure-shortcuts-row {
+      flex-direction: column !important;
+      align-items: center !important;
+  }
+}
+
 /* --- PILL RESTRAINT --- */
 /* Fail-safe: If an overlay is active, NEVER show the pill */
 :host(:has(#cure-overlay-id)) #cure-pill {
