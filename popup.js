@@ -1119,20 +1119,23 @@ function setupListeners() {
             btn.addEventListener('click', () => {
                 showSavedIndicator('Triggering...');
                 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                    if (tabs[0]?.id) {
-                        chrome.tabs.sendMessage(tabs[0].id, { 
-                            action: 'debugTrigger', 
-                            type: debugActions[id] 
-                        }).catch(err => {
-                            if (err.message.includes('Could not establish connection')) {
-                                showSavedIndicator('Refresh Tab!');
-                                console.warn('[Cure] Tab needs refresh to receive debug signals.');
-                            } else {
-                                showSavedIndicator('Error!');
-                                console.error('[Cure] Debug trigger failed:', err);
-                            }
-                        });
-                    }
+                    const tabId = tabs[0]?.id;
+                    if (!tabId) return;
+
+                    chrome.runtime.sendMessage({ 
+                        action: 'relayDebugTrigger', 
+                        type: debugActions[id],
+                        tabId: tabId
+                    }, (res) => {
+                        if (res && res.success) {
+                            showSavedIndicator('Triggered ✓');
+                        } else if (res && res.error === 'stale') {
+                            showSavedIndicator('Refresh Tab!');
+                            console.warn('[Cure] Tab needs refresh to receive debug signals.');
+                        } else {
+                            showSavedIndicator('Error!');
+                        }
+                    });
                 });
             });
         }
@@ -1350,13 +1353,17 @@ function setupNewViewListeners() {
     // TEST ZONE BUTTONS
     document.getElementById('test-factory-reset-btn')?.addEventListener('click', () => {
         if (confirm('⚠️ FACTORY RESET: This will wipe ALL settings and data. Are you sure?')) {
+            const btn = document.getElementById('test-factory-reset-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⚠️ Resetting...';
+            btn.disabled = true;
+
             chrome.runtime.sendMessage({ action: 'factoryReset' }, (res) => {
                 if (res && res.success) {
-                    alert('Reset complete. Extension will reload.');
-                    // Small delay to allow tab reload signals to propagate if needed
+                    btn.innerHTML = '✅ Reset Complete';
                     setTimeout(() => {
                         chrome.runtime.reload(); 
-                    }, 500);
+                    }, 1000);
                 }
             });
         }
