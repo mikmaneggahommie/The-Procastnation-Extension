@@ -2308,54 +2308,9 @@ class CureVault {
                 e.preventDefault();
                 e.stopPropagation();
 
-                const originalText = btn.innerText;
-                btn.innerText = "Opening Challenge...";
-                btn.style.opacity = "0.7";
-                btn.disabled = true;
-                
-                // Extract the base site URL from iframe src
-                const hostname = window.location.hostname;
-                let targetUrl = `https://${hostname}`;
-
-                // FIX: Deep-Link Unlocking for YouTube
-                // If this is a YouTube embed, open the specific video instead of the homepage.
-                if (hostname.includes('youtube.com') || hostname.includes('youtube-nocookie.com')) {
-                    const path = window.location.pathname;
-                    const match = path.match(/\/embed\/([^/?]+)/);
-                    if (match && match[1]) {
-                        targetUrl = `https://www.youtube.com/watch?v=${match[1]}`;
-                    }
-                }
-
-                // Add the auto-close flag to the URL
-                const joinChar = targetUrl.includes('?') ? '&' : '?';
-                targetUrl += `${joinChar}cure_challenge=true`;
-                
-                // FIX 102: Always use background script to open tab.
-                // This bypasses iframe sandbox restrictions (allow-popups) and popup blockers.
-                try {
-                    chrome.runtime.sendMessage({ 
-                        action: 'openTab', 
-                        url: targetUrl 
-                    }, (res) => {
-                        if (chrome.runtime.lastError) {
-                            btn.innerText = "Error - Refresh!";
-                            console.error('[Cure] Iframe unlock failed:', chrome.runtime.lastError);
-                        }
-                    });
-                } catch (err) {
-                    btn.innerText = "Error!";
-                    console.error('[Cure] Runtime connection lost:', err);
-                }
-
-                // Fallback: If no response in 3s, reset button
-                setTimeout(() => {
-                    if (btn.innerText === "Opening Challenge...") {
-                        btn.innerText = originalText;
-                        btn.style.opacity = "1";
-                        btn.disabled = false;
-                    }
-                }, 3000);
+                // FIX: In-Situ Iframe Unlock. 
+                // Instead of opening a new tab, we transform this overlay into the typing challenge.
+                this.renderTypingLock(overlay);
             };
         }
     }
@@ -2982,39 +2937,43 @@ class CureVault {
         
         sessionStorage.setItem('cure_typing_active_session', 'true');
 
-        // Progress reset toast logic moved to renderDecisionScreen for historical accuracy and UX.
-
-
         const reward = this.settings.unlockReward || 5;
         const difficulty = this.settings.unlockProtocols?.typing?.difficulty || this.settings.typingDifficulty || 50;
 
+        // FIX: In-Situ Iframe Styling (Compact Mode)
+        const isIframe = window !== window.top;
+        const containerPadding = isIframe ? '10px' : '30px';
+        const titleSize = isIframe ? '20px' : '42px';
+        const cardMargin = isIframe ? '4px' : '8px';
+        const subtitleDisplay = isIframe ? 'none' : 'block';
+
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 30px;">
-                <div class="cure-header" style="margin-bottom: 8px;">
-                    <div style="font-size:42px; margin-bottom:4px;">🔒</div>
-                    <h1 class="cure-title-large">Strict Lock Active</h1>
-                    <p class="cure-subtitle">Type the text below perfectly to unlock ${reward} minutes.</p>
+            <div class="cure-overlay-container" style="padding-top: ${containerPadding};">
+                <div class="cure-header" style="margin-bottom: ${cardMargin};">
+                    <div style="font-size:${titleSize}; margin-bottom:4px;">🔒</div>
+                    <h1 class="cure-title-large" style="font-size:${isIframe ? '18px' : 'unset'};">Strict Lock Active</h1>
+                    <p class="cure-subtitle" style="display: ${subtitleDisplay};">Type the text below perfectly to unlock ${reward} minutes.</p>
                 </div>
 
-                <div class="cure-card" style="margin-bottom: 8px;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; width:100%;">
-                        <span style="font-size:20px;">📖</span>
-                        <span style="font-weight:600; color:#1D1D1F; font-size: 16px;">Text to Type</span>
+                <div class="cure-card" style="margin-bottom: ${cardMargin}; padding: ${isIframe ? '10px' : 'unset'};">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:${isIframe ? '4px' : '12px'}; width:100%;">
+                        <span style="font-size:${isIframe ? '16px' : '20px'};">📖</span>
+                        <span style="font-weight:600; color:#1D1D1F; font-size: ${isIframe ? '14px' : '16px'};">Text to Type</span>
                     </div>
-                    <div id="cure-text-container" class="cure-text-display">Loading...</div>
+                    <div id="cure-text-container" class="cure-text-display" style="font-size: ${isIframe ? '14px' : 'unset'}; max-height: ${isIframe ? '80px' : '200px'};">Loading...</div>
                 </div>
 
-                <div class="cure-card" style="margin-bottom: 0px;">
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; width:100%;">
-                        <span style="font-size:20px;">⌨️</span>
-                        <span style="font-weight:600; color:#1D1D1F; font-size: 16px;">Your Typing</span>
+                <div class="cure-card" style="margin-bottom: 0px; padding: ${isIframe ? '10px' : 'unset'};">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:${isIframe ? '4px' : '12px'}; width:100%;">
+                        <span style="font-size:${isIframe ? '16px' : '20px'};">⌨️</span>
+                        <span style="font-weight:600; color:#1D1D1F; font-size: ${isIframe ? '14px' : '16px'};">Your Typing</span>
                         <div style="flex-grow:1;"></div>
-                        <span id="cure-count" style="font-size:14px; color:#86868B; font-weight:500;">0 Words</span>
+                        <span id="cure-count" style="font-size:12px; color:#86868B; font-weight:500;">0 Words</span>
                     </div>
-                    <textarea id="cure-input" class="cure-typing-input" placeholder="Start typing here..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+                    <textarea id="cure-input" class="cure-typing-input" style="height: ${isIframe ? '60px' : '120px'}; font-size: ${isIframe ? '14px' : 'unset'};" placeholder="Start typing here..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     
-                    <div class="cure-shortcuts-container" style="margin-top: 12px;">
-                        <button id="cure-give-up-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow:none;">
+                    <div class="cure-shortcuts-container" style="margin-top: ${isIframe ? '8px' : '12px'};">
+                        <button id="cure-give-up-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; font-size:14px; padding:0; height:${isIframe ? '40px' : '56px'}; border-radius: 12px; width: 100%; box-shadow:none;">
                             I'd rather be productive
                         </button>
                     </div>
@@ -3042,20 +3001,27 @@ class CureVault {
                         // Since they are voluntarily exiting, we don't need to warn them.
                         this.safeSendMessage({ action: 'clearResetFlag', hostname: window.location.hostname });
                     }
-                    this.renderDecisionScreen(this.settings.hardLockDuration || 30); // Go back
+                    
+                    // If in iframe, we just revert to the blocked state
+                    if (isIframe) {
+                        this.renderIframeBlocked(this.shadowRoot);
+                    } else {
+                        this.renderDecisionScreen(this.settings.hardLockDuration || 30); // Go back
+                    }
                 };
             }
         }
 
-        this.currentTypingDifficulty = difficulty;
-        this.setupTypist(difficulty); 
+        const effectiveDifficulty = isIframe ? Math.min(difficulty, 30) : difficulty;
+        this.currentTypingDifficulty = effectiveDifficulty;
+        this.setupTypist(effectiveDifficulty); 
     }
 
     // Updated fetch to use word count argument
-    fetchChallengeText(wordCount) {
-        // If wordCount arg is missing, fallback to settings
-        const count = wordCount || 50;
-        return Promise.resolve(this.getRandomChallenge(count));
+    async fetchChallengeText(wordCount) {
+        // If wordCount arg is missing, fallback to difficulty setting
+        const count = wordCount || this.currentTypingDifficulty || 50;
+        return this.getRandomChallenge(count);
     }
 
     setupTypist(difficulty) {
@@ -3197,33 +3163,48 @@ class CureVault {
             </a>`;
         }).join('');
 
+        const isIframe = window !== window.top;
         const isAutoClose = window.location.search.includes('cure_challenge=true');
-        const subtitle = isAutoClose 
+        
+        let subtitle = isAutoClose 
             ? `✨ Success! Returning you to your page in 2s...` 
             : `You have unlocked <b style="color:#1D1D1F;">${mins}min</b>.<br>The clock is ticking backwards now.`;
 
+        if (isIframe) {
+            subtitle = `✨ Victory! Revealing content...`;
+        }
+
+        overlay.dataset.mode = 'success';
+
         overlay.innerHTML = `
-            <div class="cure-overlay-container">
+            <div class="cure-overlay-container" style="padding-top: ${isIframe ? '10px' : '30px'};">
                 <div class="cure-header">
-                    <div style="font-size:42px; margin-bottom:4px;">${isAutoClose ? '✨' : '🔓'}</div>
-                    <h1 class="cure-title-large">${isAutoClose ? 'Task Complete' : 'Strict Lock Lifted'}</h1>
-                    <p class="cure-subtitle" style="max-width:400px; margin: 4px auto 0 auto;">
+                    <div style="font-size:${isIframe ? '32px' : '42px'}; margin-bottom:4px;">${(isAutoClose || isIframe) ? '✨' : '🔓'}</div>
+                    <h1 class="cure-title-large" style="font-size:${isIframe ? '20px' : 'unset'};">${(isAutoClose || isIframe) ? 'Task Complete' : 'Strict Lock Lifted'}</h1>
+                    <p class="cure-subtitle" style="max-width:400px; margin: 4px auto 0 auto; font-size:${isIframe ? '14px' : 'unset'};">
                         ${subtitle}
                     </p>
                 </div>
 
-                <div class="cure-shortcuts-container" style="margin-bottom: 32px;">
+                <div class="cure-shortcuts-container" style="margin-bottom: ${isIframe ? '12px' : '32px'}; display: ${isIframe ? 'none' : 'block'};">
                     <div class="cure-shortcuts-label">Productive Alternatives</div>
                     <div class="cure-hand-pointer">👇</div>
                     <div class="cure-shortcuts-row">${shortcuts}</div>
                 </div>
 
-                <div class="cure-action-wrapper">
-                    <button id="cure-finished-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; height: 56px;">Continue to Site</button>
+                <div class="cure-action-wrapper" style="margin-top: ${isIframe ? '12px' : '0'};">
+                    <button id="cure-finished-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; height: ${isIframe ? '40px' : '56px'}; font-size: ${isIframe ? '14px' : '16px'};">Continue</button>
                 </div>
             </div>
-            </div>
             `;
+
+        // FIX: Auto-Reveal for Iframes
+        // In an iframe, we don't want to make them click "Continue" again.
+        if (isIframe) {
+            setTimeout(() => {
+                this.confirmUnlock(mins);
+            }, 1000);
+        }
 
 
         if (this.shadowRoot) {
