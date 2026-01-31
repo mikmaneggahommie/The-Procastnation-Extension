@@ -180,9 +180,9 @@ const MediaController = {
 function normalizeTypingText(str) {
     if (!str) return "";
     return str
-        .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A\u02BC\u02BB\u02B9\u00B4\u0060]/g, "'") // All single-quote/apostrophe variants
-        .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, '"') // All double-quote variants
-        .replace(/[\u2013\u2014]/g, "-") // En-dash and Em-dash
+        .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A\u02BC\u02BB\u02B9\u00B4\u0060\u2032\u2035\uFF07]/g, "'") // Nuclear Coverage: Smart Quotes, Primes, Fullwidth
+        .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033\u2036\uFF02]/g, '"') // Nuclear Coverage: Double Smart, Double Primes, Fullwidth
+        .replace(/[\u2013\u2014\u2010\u2011\u2012\u2212]/g, "-") // En, Em, Hyphen, Non-breaking hyphen, Figure dash, Minus
         .replace(/\u00A0/g, " "); // Non-breaking spaces
 }
 
@@ -1716,6 +1716,11 @@ class CureVault {
                     this.windowedBrowserSeconds = (this.windowedBrowserSeconds || 0) + deltaSecs;
                 }
 
+                // FIX: Stability Guard. 
+                // Skip trigger checks (re-renders) if the user is in the middle of a typing challenge.
+                // This prevents the "heartbeat" from erasing their progress.
+                if (this.isTypingChallengeActive) return;
+
                 const trigger = this.checkAnyTrigger();
                 if (trigger) {
                     // console.log('[Cure] Trigger Found:', trigger);
@@ -2973,7 +2978,18 @@ class CureVault {
                 this.dismissToast(); // Hide "Tab Reset" warning as soon as they type
                 
                 // --- UNIVERSAL NORMALIZATION: Handle MacOS "Smart Quotes" & Unicode mismatches ---
-                let val = normalizeTypingText(input.value);
+                // FIX: In-place input sanitization. 
+                // We normalize the value immediately so the cursor doesn't jump and the logic is consistent.
+                const rawVal = input.value;
+                const normalizedVal = normalizeTypingText(rawVal);
+                if (rawVal !== normalizedVal) {
+                    const start = input.selectionStart;
+                    const end = input.selectionEnd;
+                    input.value = normalizedVal;
+                    input.setSelectionRange(start, end);
+                }
+                
+                let val = normalizedVal;
                 
                 const charSpans = display.querySelectorAll('.cure-char');
                 let error = false;
