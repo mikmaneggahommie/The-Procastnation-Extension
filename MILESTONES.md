@@ -4,8 +4,8 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 ### 📅 Current Golden State: Jan 31, 2026
 
-**Commit:** `3998ae0`
-**Status:** ULTIMATE STABILITY. Typing regression, navigation bypass, and seamless iframe unlocking are fully resolved and optimized.
+**Commit:** `3fe8c70`
+**Status:** ULTIMATE STABILITY + PROOFED REDIRECT. Restored classic tab-redirect for iframes with robust auto-close.
 
 ---
 
@@ -13,8 +13,15 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
-| Jan 31, 2026 | **UI: Simplified Iframe Unlock**     | `3998ae0`     | Restored minimalist Iframe UI with robust feedback and seamless reveal.                    |
-| Jan 31, 2026 | **Feature: Seamless Iframe Unlock**  | `3998ae0`     | Integrated decision screen into iframes with responsive UI and instant reveal.             |
+| Jan 31, 2026 | **Fix: Jittery Redirect & Input**    | `[LATEST]`    | Fixed reset loops, apostrophe typing, and perfected iframe redirects.                      |
+| Jan 31, 2026 | **Feature: Robust Redirect & Sync**  | `3fe8c70`     | Restored tab-redirect for iframes; implemented Deep Broadcast sync and robust auto-close.  |
+| Jan 31, 2026 | **Feature: Full-Page Iframe Relay**  | `8bbde1c`     | (DEPRECATED) Relay system that triggered challenges on parent page.                        |
+| Jan 31, 2026 | **Feature: In-Situ Iframe Unlock**   | `5840d3e`     | (DEPRECATED) Typing challenges appeared inside frames; 0 redirects.                        |
+| Jan 31, 2026 | **Feature: Silent Auto-Close**       | `fafae3a`     | Challenge tabs now close automatically upon success without needing a click.               |
+| Jan 31, 2026 | **Feature: Premium Iframe Loop**     | `fafae3a`     | Implemented deep-link extraction and auto-closing for a seamless video unlock experience.  |
+| Jan 31, 2026 | **FIX: Iframe Unlock & Sound**       | `0b38933`     | Fixed unresponsive button (pointer-events) and silenced heartbeat gong sound.              |
+| Jan 31, 2026 | **UI: Simplified Iframe Unlock**     | `0b38933`     | Restored minimalist Iframe UI with robust feedback and seamless reveal.                    |
+| Jan 31, 2026 | **Feature: Seamless Iframe Unlock**  | `0b38933`     | Integrated decision screen into iframes with responsive UI and instant reveal.             |
 | Jan 31, 2026 | **Shield Reinforced (Golden State)** | `2d41daa`     | Comprehensive fix for typing stability, navigation bypass, and deep-frame media pause.     |
 | Jan 31, 2026 | **Fix: Typing Challenge Stability**  | `2d41daa`     | Prevented 'heartbeat' re-renders from wiping input during challenges.                      |
 | Jan 31, 2026 | **Fix: Nuclear Quote Normalization** | `2d41daa`     | Expanded unicode coverage for MacOS/International quotes and dashes.                       |

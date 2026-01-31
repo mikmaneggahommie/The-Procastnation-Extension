@@ -424,6 +424,10 @@ class CureVault {
         
         if (needsReset || this._resetToastPending) {
             if (needsReset) {
+                // FIX: IMMEDIATE LOCAL CLEANUP to prevent infinite loop
+                sessionStorage.removeItem(resetKeySpecific);
+                sessionStorage.removeItem(resetKeyGeneric);
+                
                 // FIX: PERSISTENCE STRATEGY
                 // 1. Keep Local flags for persistence across reloads.
                 // 2. Clear Global Flag via Proxy (to stop background nag)
@@ -3069,11 +3073,13 @@ class CureVault {
                 this.dismissToast(); // Hide "Tab Reset" warning as soon as they type
                 
                 // --- UNIVERSAL NORMALIZATION: Handle MacOS "Smart Quotes" & Unicode mismatches ---
-                // FIX: In-place input sanitization. 
-                // We normalize the value immediately so the cursor doesn't jump and the logic is consistent.
                 const rawVal = input.value;
                 const normalizedVal = normalizeTypingText(rawVal);
-                if (rawVal !== normalizedVal) {
+
+                // FIX: IME / Dead Key Protection
+                // Do NOT rewrite the input value while composing (this breaks apostrophe/dead keys).
+                // Only rewrite if we are NOT composing.
+                if (!e.isComposing && rawVal !== normalizedVal) {
                     const start = input.selectionStart;
                     const end = input.selectionEnd;
                     input.value = normalizedVal;
@@ -3155,7 +3161,7 @@ class CureVault {
             if (window.location.search.includes('cure_challenge=true')) {
                 setTimeout(() => {
                     chrome.runtime.sendMessage({ action: 'closeMyTab' });
-                }, 1500);
+                }, 500);
             }
         }
 
@@ -3210,7 +3216,7 @@ class CureVault {
             if (isAutoClose) {
                 setTimeout(() => {
                     this.confirmUnlock(mins);
-                }, 2000);
+                }, 500);
             }
         }
     }
