@@ -13,7 +13,8 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
-| Jan 31, 2026 | **Fix: Jittery Redirect & Input**    | `[LATEST]`    | Fixed reset loops, apostrophe typing, and perfected iframe redirects.                      |
+| Jan 31, 2026 | **Performance & Stability Overhaul** | `[LATEST]`    | Fixed jittery resets, video loops, input bugs, and optimized I/O.                          |
+| Jan 31, 2026 | **Fix: Jittery Redirect & Input**    | `3fe8c70`     | Fixed reset loops, apostrophe typing, and perfected iframe redirects.                      |
 | Jan 31, 2026 | **Feature: Robust Redirect & Sync**  | `3fe8c70`     | Restored tab-redirect for iframes; implemented Deep Broadcast sync and robust auto-close.  |
 | Jan 31, 2026 | **Feature: Full-Page Iframe Relay**  | `8bbde1c`     | (DEPRECATED) Relay system that triggered challenges on parent page.                        |
 | Jan 31, 2026 | **Feature: In-Situ Iframe Unlock**   | `5840d3e`     | (DEPRECATED) Typing challenges appeared inside frames; 0 redirects.                        |

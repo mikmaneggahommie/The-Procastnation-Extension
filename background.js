@@ -56,10 +56,19 @@ async function getDailyStats() {
     return g_dailyStats;
 }
 
+let g_saveTimeout = null;
+
 async function saveStats() {
     if (g_dailyStats) {
-        // Fire and forget, but maybe catch error
-        chrome.storage.local.set({ dailyStats: g_dailyStats });
+        // FIX: Debounce High-Frequency I/O
+        // With 50+ tabs, direct writes cause browser lag.
+        // We buffer updates in memory and commit to disk only once every 2 seconds.
+        if (g_saveTimeout) clearTimeout(g_saveTimeout);
+        
+        g_saveTimeout = setTimeout(() => {
+            chrome.storage.local.set({ dailyStats: g_dailyStats });
+            g_saveTimeout = null;
+        }, 2000);
     }
 }
 
@@ -125,7 +134,8 @@ chrome.runtime.onInstalled.addListener(async () => {
         const settings = result.settings || DEFAULT_SETTINGS;
         if (!result.settings) {
             await chrome.storage.sync.set({ settings: DEFAULT_SETTINGS });
-            console.log('[Cure] Default settings initialized.');
+            await chrome.storage.sync.set({ settings: DEFAULT_SETTINGS });
+            console.debug('[Cure] Default settings initialized.');
         }
         // Initialize blocking rules on install/update
         updateBlockingRules(settings.blacklist || []);
@@ -190,7 +200,7 @@ async function updateBlockingRules(blacklist) {
             removeRuleIds: existingIds,
             addRules: rules
         });
-        console.log(`[Cure] NetRequest rules updated: ${rules.length} domains blocked at network level.`);
+        console.debug(`[Cure] NetRequest rules updated: ${rules.length} domains blocked.`);
     } catch (e) {
         console.error('[Cure] Failed to update NetRequest rules:', e);
     }
@@ -207,11 +217,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             
             // 🛑 CRITICAL / LOCKED FEATURE 🛑
             // DO NOT CHANGE THIS LOGIC. SEE LOCKED_FEATURES.md
-            // PESSIMISTIC LOCKING: We set the reset flag NOW. It stays until explicit success/giveup.
-            // This prevents bypass via tab kill/crash/unload.
+            // PESSIMISTIC LOCKING: We set the reset flag NOW.
             chrome.storage.session.set({ [`cure_needs_reset_${hostname}`]: true });
             
-            console.log(`[Cure] Challenge started on ${hostname} (Tab ${tabId}) - Reset Flag SET`);
+            console.debug(`[Cure] Challenge started on ${hostname} (Tab ${tabId})`);
         }
         sendResponse({ success: true });
         return;
@@ -230,10 +239,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'checkResetStatus') {
         const hostname = request.hostname;
-        console.log(`[Cure] checkResetStatus called for: ${hostname}`);
+        // console.debug(`[Cure] checkResetStatus called for: ${hostname}`);
         storage.session.get(`cure_needs_reset_${hostname}`).then(res => {
             const needsReset = res[`cure_needs_reset_${hostname}`] === true;
-            console.log(`[Cure] checkResetStatus result for ${hostname}:`, needsReset, 'raw:', res);
+            // console.debug(`[Cure] status for ${hostname}:`, needsReset);
             sendResponse({ needsReset });
         }).catch(e => {
             console.error(`[Cure] checkResetStatus error:`, e);

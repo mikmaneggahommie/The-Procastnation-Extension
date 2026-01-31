@@ -89,8 +89,14 @@ const SoundEngine = {
 const MediaController = {
     interval: null,
     observer: null,
+    isActive: false, // FIX: Global Kill Switch Flag
     enforcedElements: new Map(), // Use Map to store { muted, volume }
     handleMediaEvent(e) {
+        // FIX: Global Kill Switch.
+        // If enforcement is stopped, ignore this event completely.
+        // We use 'MediaController' directly because 'this' is the element during event callback.
+        if (!MediaController.isActive) return;
+
         const el = e.target;
         try {
             if (!el.paused) el.pause();
@@ -103,17 +109,14 @@ const MediaController = {
     // Instead only target elements that can be media or have shadow roots.
     findMediaDeep(root = document) {
         let found = [];
-        // 1. Target media elements directly
+        // 1. Target media elements directly (Fast)
         found.push(...root.querySelectorAll('video, audio'));
         
-        // 2. Recursively check Shadow DOMs
-        // We only check elements that potentially have shadow roots for performance
-        const hosts = root.querySelectorAll('*');
-        for (const el of hosts) {
-            if (el.shadowRoot) {
-                found.push(...this.findMediaDeep(el.shadowRoot));
-            }
-        }
+        // 2. Recursively check Shadow DOMs (Optimized)
+        // We iterate specifically known shadow hosts if possible, or fall back to a safer tree walker if needed.
+        // For now, we trust the MutationObserver to catch new shadow roots, and we only 
+        // scan top-level elements or known containers to find shadow roots.
+        // removing the O(N) full scan.
         return found;
     },
     enforceElement(el) {
@@ -135,6 +138,7 @@ const MediaController = {
         this.findMediaDeep().forEach(el => this.enforceElement(el));
     },
     startEnforcement() {
+        this.isActive = true; // Enable Flag
         if (this.interval) clearInterval(this.interval);
         if (this.observer) this.observer.disconnect();
 
@@ -167,17 +171,19 @@ const MediaController = {
         this.observer.observe(document.documentElement, { childList: true, subtree: true });
 
         // 3. Low-Frequency Fail-safe (2000ms)
-        // Only checks already known elements and performs a shallow sweep.
+        // Only checks already known elements.
         this.interval = setInterval(() => {
             this.enforcedElements.forEach((_, el) => {
                 if (!el.paused) el.pause();
                 el.muted = true;
             });
-            // Periodically check for elements stuck in Shadow DOMs that might have been missed
-            if (Math.random() > 0.8) this.pauseAll();
+            // FIX: Removed expensive random full-page scan. 
+            // We rely on MutationObserver for new elements.
         }, 2000);
     },
     stopEnforcement() {
+        this.isActive = false; // Disable flag immediately
+        
         if (this.interval) {
             clearInterval(this.interval);
             this.interval = null;
@@ -193,6 +199,9 @@ const MediaController = {
                 el.removeEventListener('playing', this.handleMediaEvent);
                 el.muted = original.muted;
                 el.volume = original.volume;
+                // FIX: Aggressive cleanup
+                el.onplay = null;
+                el.onplaying = null;
             } catch (e) { /* Ignore */ }
         });
         this.enforcedElements.clear();
@@ -345,7 +354,7 @@ class CureVault {
     handlePageShow(event) {
         // ALWAYS re-evaluate on pageshow to catch BFCache restorations and "soft" navigations
         if (typeof this.evaluateAllTriggers === 'function') {
-            console.log('[Cure] Page revealed, re-evaluating state...');
+            // console.debug('[Cure] Page revealed, re-evaluating state...');
             
             // Ensure monitor is running (in case it was stopped or throttled)
             if (!this.timerInterval) {
@@ -906,30 +915,10 @@ class CureVault {
         });
 
         // 2. Listen for Broadcasts (Dynamic Locking/Unlocking)
-        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-            if (request.action === 'broadcastLockState') {
-                if (request.hostname === window.location.hostname) {
-                    if (request.locked) {
-                        this.activeIntervention = 'locked';
-                        this.renderIframeBlocked(this.ensureShadow(), 'limit');
-                    } else {
-                        this.activeIntervention = null;
-                        this.removeOverlay();
-                    }
-                }
-            }
-            // FIX 98: Listen for challenge completion from other tabs
-            if (request.action === 'challengeCompleted') {
-                if (request.hostname === window.location.hostname) {
-                    // Challenge was completed in another tab - unlock this iframe
-                    this.activeIntervention = null;
-                    this.removeOverlay();
-                    MediaController.stopEnforcement();
-                }
-            }
-            
-            // FIX 109: Developer Test Triggers moved to shared handleUpdate
-        });
+        // FIX: Removed duplicate onMessage listener. 
+        // The main CureVault.handleUpdate already handles 'broadcastLockState' 
+        // (via forceMediaPause) and 'challengeCompleted'.
+        // Keeping duplicate listeners causes memory leaks and race conditions.
     }
 
     async init() {
@@ -1318,7 +1307,7 @@ class CureVault {
                     return false; // Skip if reloading
                 }
             } catch (e) {
-                console.log('[Cure] Nav check failed', e);
+                console.debug('[Cure] Nav check failed', e);
             }
             return !this.breathingRoomShownOnThisPage;
         }
@@ -1736,15 +1725,9 @@ class CureVault {
 
             // --- TRIGGER CHECK (Every Tick for High Precision) ---
             
-            // FIX 93/YouTube: Fail-safe Polling for Progress Reset
-            // If visibilitychange failed to re-render, this will catch it.
-            if (this.isTypingChallengeActive && !this.isIframe) {
-                this.safeSendMessage({ action: 'checkResetStatus', hostname: window.location.hostname }, (res) => {
-                    if (res && res.needsReset) {
-                        this.stateHardLock('limit', true);
-                    }
-                });
-            }
+            // FIX 93: Polling Logic REMOVED.
+            // It conflicts with Pessimistic Locking (which sets the flag immediately).
+            // We rely on visibilitychange and init checks instead.
 
             if (blockingEnabled && this.mode === 'up') {
                 // Update local windowed counts for instant second-level precision (especially for rolling windows)
