@@ -50,3 +50,19 @@ This feature is highly sensitive to the browser's rendering lifecycle. It has br
 
 - **Isolation**: All overlay UI (Pill, Lock Screen, Toast) exists within a closed Shadow Root (`#cure-root`).
 - **Style Injection**: We inject `<style>` tags dynamically into this root.
+
+---
+
+## 3. Background Authoritative Lock (Anti-Cheat)
+
+**Status**: ✅ STABLE (Verified Jan 31, 2026)
+**File**: `background.js`, `content.js`
+**Commit**: `5a9ad61`
+
+### 🔒 Implementation Constraints
+
+1.  **Authoritarian Source**: `background.js` is the ONLY source of truth for settings while a site is locked.
+2.  **Immutability**: Once a lock is engaged, the rules for that specific hostname are snapshotted (`JSON.parse(JSON.stringify(settings))`) and cannot be changed until the challenge is cleared.
+3.  **Filtered Broadcast**: `updateSettings` selectively sends frozen snapshots to locked tabs and global settings to active ones.
+    - **RULE**: Always check the tab's hostname against the snapshot registry before broadcasting.
+4.  **No Client-Side Storage**: `content.js` must NOT maintain its own rule overrides; it must trust the background's `getSettings` response.
