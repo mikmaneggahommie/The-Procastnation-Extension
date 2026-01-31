@@ -779,6 +779,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.action === 'requestParentChallenge') {
+        const tabId = sender.tab?.id;
+        if (tabId) {
+            // Relay to frame 0 (TOP)
+            chrome.tabs.sendMessage(tabId, { action: 'startParentChallenge' }, { frameId: 0 }).catch(() => {});
+            sendResponse({ success: true });
+        } else {
+            sendResponse({ error: 'No tab found' });
+        }
+        return true;
+    }
+
     if (request.action === 'markUnlocked') {
         const { hostname } = request;
         const key = `lock_${hostname}`;
