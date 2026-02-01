@@ -1491,6 +1491,9 @@ function updateUIState() {
     // --- REAL-TIME SAVE VALIDATION ---
     const v = validateSettings();
     const saveBtn = document.getElementById('save-difficulty-btn');
+    const hlView = document.getElementById('hardlock-config-view');
+    const hlScrollable = hlView?.querySelector('.scrollable-content');
+
     if (saveBtn) {
         if (!v.valid) {
             saveBtn.disabled = true;
@@ -1498,11 +1501,23 @@ function updateUIState() {
             saveBtn.style.cursor = 'not-allowed';
             const errorMsg = v.errors.find(e => e.includes('Strict Lock Error')) || v.errors[0];
             showValidationWarning(errorMsg);
+
+            // VISUAL FADE: Only if Strict Lock master is actually ON
+            if (currentSettings?.masterHardLock !== false && hlScrollable) {
+                hlScrollable.style.opacity = '0.6';
+                hlScrollable.style.filter = 'grayscale(0.5)';
+            }
         } else {
             saveBtn.disabled = false;
             saveBtn.style.opacity = '1';
             saveBtn.style.cursor = 'pointer';
             hideValidationWarning();
+
+            // RESTORE VISUALS: Only if master is ON
+            if (currentSettings?.masterHardLock !== false && hlScrollable) {
+                hlScrollable.style.opacity = '1';
+                hlScrollable.style.filter = 'none';
+            }
         }
     }
 
