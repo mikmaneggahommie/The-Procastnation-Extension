@@ -2935,7 +2935,8 @@ class CureVault {
                 try { SoundEngine.playChime('success'); } catch (e) { }
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
-                submit.textContent = "So you choose to break your vow? Unlock.";
+                submit.textContent = "I choose to break my vow. Unlock.";
+                submit.classList.remove('cure-anim-pulse-black'); // In case it was pulsing
                 submit.style.background = "transparent";
                 submit.style.color = "#86868B";
                 submit.style.border = "2px solid #E5E5EA";
@@ -3004,7 +3005,7 @@ class CureVault {
                     <textarea id="cure-input" class="cure-typing-input" placeholder="Start typing here..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     
                     <div class="cure-shortcuts-container" style="margin-top: 12px;">
-                        <button id="cure-give-up-btn" class="cure-btn-unlock" style="background:#1d1d1f; border: none; color:#ffffff; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-weight:600;">
+                        <button id="cure-give-up-btn" class="cure-btn-unlock cure-anim-pulse-black" style="background:#1d1d1f; border: none; color:#ffffff; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-weight:600;">
                             I'd rather be productive
                         </button>
                     </div>
@@ -3155,7 +3156,8 @@ class CureVault {
 
                     const giveUpBtn = root.getElementById('cure-give-up-btn');
                     if (giveUpBtn) {
-                        giveUpBtn.textContent = "So you choose to break your vow? Unlock.";
+                        giveUpBtn.textContent = "I choose to break my vow. Unlock.";
+                        giveUpBtn.classList.remove('cure-anim-pulse-black');
                         giveUpBtn.style.background = "transparent";
                         giveUpBtn.style.color = "#86868B";
                         giveUpBtn.style.border = "2px solid #E5E5EA";
