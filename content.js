@@ -2936,10 +2936,11 @@ class CureVault {
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
                 submit.textContent = "So you choose to break your vow? Unlock.";
-                submit.style.background = "#1d1d1f";
-                submit.style.color = "#ffffff";
-                submit.style.border = "none";
-                submit.style.fontWeight = "700";
+                submit.style.background = "transparent";
+                submit.style.color = "#86868B";
+                submit.style.border = "2px solid #E5E5EA";
+                submit.style.fontWeight = "600";
+                submit.style.boxShadow = "none";
                 
                 submit.onclick = () => {
                     this.tempPasswordComplete = true;
@@ -3003,7 +3004,7 @@ class CureVault {
                     <textarea id="cure-input" class="cure-typing-input" placeholder="Start typing here..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     
                     <div class="cure-shortcuts-container" style="margin-top: 12px;">
-                        <button id="cure-give-up-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow:none;">
+                        <button id="cure-give-up-btn" class="cure-btn-unlock" style="background:#1d1d1f; border: none; color:#ffffff; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-weight:600;">
                             I'd rather be productive
                         </button>
                     </div>
@@ -3155,11 +3156,12 @@ class CureVault {
                     const giveUpBtn = root.getElementById('cure-give-up-btn');
                     if (giveUpBtn) {
                         giveUpBtn.textContent = "So you choose to break your vow? Unlock.";
-                        giveUpBtn.style.background = "#1d1d1f";
-                        giveUpBtn.style.color = "#ffffff";
-                        giveUpBtn.style.borderColor = "#1d1d1f";
-                        giveUpBtn.style.fontWeight = "700";
-                        giveUpBtn.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
+                        giveUpBtn.style.background = "transparent";
+                        giveUpBtn.style.color = "#86868B";
+                        giveUpBtn.style.border = "2px solid #E5E5EA";
+                        giveUpBtn.style.borderColor = "#E5E5EA";
+                        giveUpBtn.style.fontWeight = "600";
+                        giveUpBtn.style.boxShadow = "none";
                         
                         giveUpBtn.onclick = () => {
                             this.unlockSession(this.settings.unlockReward || 5);
