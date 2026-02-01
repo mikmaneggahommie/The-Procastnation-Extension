@@ -2229,12 +2229,6 @@ class CureVault {
         this.activeIntervention = null;
         this.abortTimerChallenge();
         
-        this.activeIntervention = null;
-        this.abortTimerChallenge();
-        
-        this.activeIntervention = null;
-        this.abortTimerChallenge();
-        
         // Clean up old key if it exists (migration)
         this.safeSendMessage({ action: 'sessionStorageProxy', op: 'remove', key: `cure_snapshot_${window.location.hostname}` });
         
@@ -2765,8 +2759,6 @@ class CureVault {
         const p = this.settings.unlockProtocols || {};
         
         // Notify background that a challenge has officially started on this tab
-        
-        // Notify background that a challenge has officially started on this tab
         this.safeSendMessage({ action: 'challengeStarted', hostname: window.location.hostname });
 
         if (p.godMode) {
@@ -2933,10 +2925,26 @@ class CureVault {
             };
         }
 
+        let passResolved = false;
         const check = () => {
+            if (passResolved) return;
             if (input.value === correctPassword) {
-                this.tempPasswordComplete = true;
-                this.renderHardLock(overlay);
+                passResolved = true;
+                input.disabled = true;
+                input.blur();
+                try { SoundEngine.playChime('success'); } catch (e) { }
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+                submit.textContent = "So you choose to break your vow? Unlock.";
+                submit.style.background = "#1d1d1f";
+                submit.style.color = "#ffffff";
+                submit.style.border = "none";
+                submit.style.fontWeight = "700";
+                
+                submit.onclick = () => {
+                    this.tempPasswordComplete = true;
+                    this.renderHardLock(overlay);
+                };
             } else {
                 err.style.opacity = '1';
                 input.classList.add('shake'); // Use the 'shake' class already in css
@@ -3137,8 +3145,26 @@ class CureVault {
                 }
 
                 if (val === text) {
+                    // FIX: Manual Guilt-Based Confirmation
+                    // Instead of auto-unlocking, we transform the "Give Up" button into a "Vow Break" button.
+                    input.disabled = true; 
+                    input.blur();
                     try { SoundEngine.playChime('success'); } catch (e) { }
-                    this.unlockSession(this.settings.unlockReward || 5);
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+                    const giveUpBtn = root.getElementById('cure-give-up-btn');
+                    if (giveUpBtn) {
+                        giveUpBtn.textContent = "So you choose to break your vow? Unlock.";
+                        giveUpBtn.style.background = "#1d1d1f";
+                        giveUpBtn.style.color = "#ffffff";
+                        giveUpBtn.style.borderColor = "#1d1d1f";
+                        giveUpBtn.style.fontWeight = "700";
+                        giveUpBtn.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
+                        
+                        giveUpBtn.onclick = () => {
+                            this.unlockSession(this.settings.unlockReward || 5);
+                        };
+                    }
                 }
             };
         });
