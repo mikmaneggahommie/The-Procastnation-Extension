@@ -2935,7 +2935,7 @@ class CureVault {
                 try { SoundEngine.playChime('success'); } catch (e) { }
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
-                submit.textContent = "I choose to break my vow. Unlock.";
+                submit.textContent = "I’m giving in. Unlock.";
                 submit.classList.remove('cure-anim-pulse-black'); // In case it was pulsing
                 submit.style.background = "transparent";
                 submit.style.color = "#86868B";
@@ -3156,7 +3156,7 @@ class CureVault {
 
                     const giveUpBtn = root.getElementById('cure-give-up-btn');
                     if (giveUpBtn) {
-                        giveUpBtn.textContent = "I choose to break my vow. Unlock.";
+                        giveUpBtn.textContent = "I’m giving in. Unlock.";
                         giveUpBtn.classList.remove('cure-anim-pulse-black');
                         giveUpBtn.style.background = "transparent";
                         giveUpBtn.style.color = "#86868B";
