@@ -1979,7 +1979,7 @@ class CureVault {
     }
 
 
-    stateHardLock(reason = 'limit', forced = false) {
+    stateHardLock(reason = 'limit', forced = false, phase = 'decision') {
         if (!this.isContextValid()) return;
         
         // FIX: Idempotency Guard. 
@@ -2035,7 +2035,7 @@ class CureVault {
         this.activeIntervention = 'locked';
         MediaController.startEnforcement();
 
-        this.renderOverlay('locked', reason, forced);
+        this.renderOverlay('locked', reason, forced, phase);
     }
 
     // --- STYLES (SHADOW DOM) ---
@@ -2446,7 +2446,7 @@ class CureVault {
         }
     }
 
-    renderOverlay(mode, message = "Take a breath.", forced = false) {
+    renderOverlay(mode, message = "Take a breath.", forced = false, phase = 'decision') {
         // FIX 108: Ultimate Whitelist Safety
         if (this.isWhitelisted() && !forced) {
             this.removeOverlay();
@@ -2492,7 +2492,14 @@ class CureVault {
         if (mode === 'breathing') {
             this.renderBreathing(overlay, message, forced);
         } else if (mode === 'locked') {
-            this.renderDecisionScreen(this.settings.hardLockDuration || 30, message, forced);
+            // FIX: Phase Routing.
+            // If phase is 'protocol', skip the Decision/Time's Up screen and go straight to protocols.
+            // This is used for manual re-locks (Lock Transition) to prevent "No Challenge" bugs.
+            if (phase === 'protocol') {
+                this.renderHardLock(overlay);
+            } else {
+                this.renderDecisionScreen(this.settings.hardLockDuration || 30, message, forced);
+            }
         } else {
             this.renderBreathing(overlay, message, forced);
         }
@@ -2695,7 +2702,10 @@ class CureVault {
                             }
                         }, 3000);
                     } else {
-                        await this.renderHardLock(overlay);
+                        // FIX: Lock Transition Hook.
+                        // We use the 'protocol' phase to jump straight to the challenge.
+                        // This establishes authority (snapshot new settings) AND advances UI.
+                        await this.stateHardLock('limit', true, 'protocol');
                     }
                 };
             }
