@@ -2784,8 +2784,17 @@ class CureVault {
             return;
         }
 
-        // If no protocols remain (or all passed), unlock.
-        this.unlockSession(this.settings.unlockReward || 5);
+        // If no protocols remain (and we haven't unlocked yet), it means either:
+        // 1. All protocols passed (handled above)
+        // 2. No protocols are enabled (Permanent Block)
+        
+        if (!this.tempDelayComplete && !this.tempPasswordComplete) {
+            // No methods available to unlock this site today
+            this.renderGodMode(overlay);
+        } else {
+            // If we got here and some are complete, we unlock.
+            this.unlockSession(this.settings.unlockReward || 5);
+        }
     }
 
     renderGodMode(overlay) {

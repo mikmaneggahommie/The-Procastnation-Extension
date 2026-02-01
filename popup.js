@@ -142,6 +142,30 @@ function validateSettings() {
         errors.push('Browser limit must be at least 1 minute.');
     }
 
+    // --- STRICT LOCK ENFORCEMENT ---
+    const hlOn = document.getElementById('master-hardlock-enable').checked;
+    if (hlOn) {
+        // 1. Activation Method Required
+        const sessionOn = document.getElementById('trigger-session-enable').checked;
+        const launchOn = document.getElementById('trigger-launch-enable').checked;
+        const browserOn = document.getElementById('trigger-browser-enable').checked;
+
+        if (!sessionOn && !launchOn && !browserOn) {
+            errors.push('<strong>Strict Lock Error:</strong> Select at least one Activation Method (e.g. Site Activity Limit).');
+        }
+
+        // 2. Protocol Required
+        const typeOn = document.getElementById('proto-typing-enable').checked;
+        const passOn = document.getElementById('proto-password-enable').checked;
+        const delayOn = document.getElementById('proto-delay-enable').checked;
+        const passiveOn = document.getElementById('proto-passive-enable').checked;
+        const noneOn = document.getElementById('proto-godmode-enable').checked;
+
+        if (!typeOn && !passOn && !delayOn && !passiveOn && !noneOn) {
+            errors.push('<strong>Strict Lock Error:</strong> Select at least one Unlock Protocol (e.g. Typing or None).');
+        }
+    }
+
     // --- DOCTOR STRANGE HEURISTICS (Toxic Configs) ---
 
     // RULE 4: The Flicker Trap (Limit > 95% of Window)
@@ -969,14 +993,8 @@ function setupListeners() {
                 threshold: getConvertedVal('passive-work-val', 'passive-work-unit') || 1800
             };
 
-            // SAFEGUARD #6: If ALL protocols are disabled (and not None Mode), force-enable Typing
-            const p = currentSettings.unlockProtocols;
-            const noProtocolsEnabled = !p.typing.enabled && !p.password.enabled && !p.delay.enabled && !p.godMode;
-            if (noProtocolsEnabled) {
-                currentSettings.unlockProtocols.typing.enabled = true;
-                document.getElementById('proto-typing-enable').checked = true;
-                if (window.triggerProtocolUIUpdate) window.triggerProtocolUIUpdate();
-            }
+            // SAFEGUARD #6 REMOVED: Respect user choice for protocols.
+            // (Previously forced typing enabled here)
 
             // SAFEGUARD #8: Enforce minimum 1 minute unlock reward
             if (currentSettings.unlockReward < 1) {
@@ -1468,6 +1486,24 @@ function updateUIState() {
     const rewardContainer = document.getElementById('reward-time-container');
     if (rewardContainer) {
         rewardContainer.style.display = noneMode ? 'none' : 'block';
+    }
+
+    // --- REAL-TIME SAVE VALIDATION ---
+    const v = validateSettings();
+    const saveBtn = document.getElementById('save-difficulty-btn');
+    if (saveBtn) {
+        if (!v.valid) {
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.5';
+            saveBtn.style.cursor = 'not-allowed';
+            const errorMsg = v.errors.find(e => e.includes('Strict Lock Error')) || v.errors[0];
+            showValidationWarning(errorMsg);
+        } else {
+            saveBtn.disabled = false;
+            saveBtn.style.opacity = '1';
+            saveBtn.style.cursor = 'pointer';
+            hideValidationWarning();
+        }
     }
 
     // --- TYPING EFFECTIVENESS ---
