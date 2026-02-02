@@ -1539,7 +1539,9 @@ function updateUIState() {
     // SILENT PASSWORD CHECK: Disable Save if password is ON but incomplete/editing
     const passOn = document.getElementById('proto-password-enable')?.checked;
     const isPasswordEditing = document.getElementById('password-setup-state')?.style.display !== 'none';
-    const hasPassword = !!(currentSettings?.unlockProtocols?.password?.value);
+    const hasStoredPassword = !!(currentSettings?.unlockProtocols?.password?.value);
+    const hasBufferPassword = !!(document.getElementById('proto-password-val')?.value);
+    const hasPassword = hasStoredPassword || hasBufferPassword;
     const passIncomplete = passOn && (isPasswordEditing || !hasPassword);
 
     if (hlSaveBtn && isHLMasterOn) {
