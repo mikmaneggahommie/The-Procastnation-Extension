@@ -91,7 +91,7 @@ function saveSettings() {
 
 /**
  * Validates settings before saving.
- * Returns { valid: boolean, warnings: string[], errors: string[] }
+ * Returns { valid: boolean, warnings: [{message, elementId}], errors: [{message, elementId}] }
  */
 function validateSettings() {
     const errors = [];
@@ -114,20 +114,26 @@ function validateSettings() {
     const browserLimitSeconds = getConvertedVal('browser-limit-input', 'browser-limit-unit');
     const browserWindowSeconds = parseInt(document.getElementById('browser-limit-window').value) || 86400;
 
-    // VALIDATION RULE 1: Limit cannot equal or exceed window (Deadlock / Impossible)
+    // VALIDATION RULE 1: Limit cannot strictly exceed window (Deadlock)
     if (sessionEnabled && windowSeconds > 0) {
-        if (limitSeconds >= windowSeconds) {
+        if (limitSeconds > windowSeconds) {
             const limitStr = formatTime(limitSeconds);
             const windowStr = formatWindow(windowSeconds);
-            errors.push(`Limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}). This creates a deadlock.`);
+            errors.push({
+                message: `Limit (${limitStr}) cannot be greater than the window (${windowStr}). This creates a deadlock.`,
+                elementId: 'hardlock-input'
+            });
         }
     }
 
     if (browserEnabled && browserWindowSeconds > 0) {
-        if (browserLimitSeconds >= browserWindowSeconds) {
+        if (browserLimitSeconds > browserWindowSeconds) {
             const limitStr = formatTime(browserLimitSeconds);
             const windowStr = formatWindow(browserWindowSeconds);
-            errors.push(`Browser limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}).`);
+            errors.push({
+                message: `Browser limit (${limitStr}) cannot be greater than the window (${windowStr}).`,
+                elementId: 'browser-limit-input'
+            });
         }
     }
 
@@ -136,10 +142,10 @@ function validateSettings() {
 
     // VALIDATION RULE 3: Minimum limit of 1 minute (prevents instant lock)
     if (sessionEnabled && limitSeconds < 60) {
-        errors.push('Limit must be at least 1 minute.');
+        errors.push({ message: 'Limit must be at least 1 minute.', elementId: 'hardlock-input' });
     }
     if (browserEnabled && browserLimitSeconds < 60) {
-        errors.push('Browser limit must be at least 1 minute.');
+        errors.push({ message: 'Browser limit must be at least 1 minute.', elementId: 'browser-limit-input' });
     }
 
     // --- STRICT LOCK ENFORCEMENT ---
@@ -151,7 +157,10 @@ function validateSettings() {
         const browserOn = document.getElementById('trigger-browser-enable').checked;
 
         if (!sessionOn && !launchOn && !browserOn) {
-            errors.push('<strong>Strict Lock Error:</strong> Select at least one Activation Method (e.g. Site Activity Limit).');
+            errors.push({
+                message: '<strong>Strict Lock Error:</strong> Select at least one Activation Method (e.g. Site Activity Limit).',
+                elementId: 'master-hardlock-enable'
+            });
         }
 
         // 2. Protocol Required
@@ -162,7 +171,10 @@ function validateSettings() {
         const noneOn = document.getElementById('proto-godmode-enable').checked;
 
         if (!typeOn && !passOn && !delayOn && !passiveOn && !noneOn) {
-            errors.push('<strong>Strict Lock Error:</strong> Select at least one Unlock Protocol (e.g. Typing or None).');
+            errors.push({
+                message: '<strong>Strict Lock Error:</strong> Select at least one Unlock Protocol (e.g. Typing or None).',
+                elementId: 'master-hardlock-enable'
+            });
         }
 
         // 3. Password Integrity Check (State-Aware)
@@ -173,10 +185,10 @@ function validateSettings() {
             const confirmVal = document.getElementById('proto-password-confirm')?.value;
 
             if (isEditing) {
-                if (!newVal) errors.push('<strong>Password Error:</strong> New password cannot be empty.');
-                if (newVal !== confirmVal) errors.push('<strong>Password Error:</strong> New passwords do not match.');
+                if (!newVal) errors.push({ message: '<strong>Password Error:</strong> New password cannot be empty.', elementId: 'proto-password-val' });
+                if (newVal !== confirmVal) errors.push({ message: '<strong>Password Error:</strong> New passwords do not match.', elementId: 'proto-password-confirm' });
             } else if (!hasStored) {
-                errors.push('<strong>Password Error:</strong> No password set. Please click "Update Password" to create one.');
+                errors.push({ message: '<strong>Password Error:</strong> No password set. Please click "Update Password" to create one.', elementId: 'proto-password-enable' });
             }
         }
     }
@@ -186,7 +198,10 @@ function validateSettings() {
     // RULE 4: The Flicker Trap (Limit > 95% of Window)
     if (sessionEnabled && windowSeconds > 0) {
         if (limitSeconds > windowSeconds * 0.95) {
-            warnings.push('<strong>Flicker Warning:</strong> Limit is very close to window size. You may get locked/unlocked constantly.');
+            warnings.push({
+                message: '<strong>Flicker Warning:</strong> Limit is very close to window size. You may get locked/unlocked constantly.',
+                elementId: 'hardlock-input'
+            });
         }
     }
 
@@ -197,10 +212,13 @@ function validateSettings() {
     // RULE 7: Passive Inflation (Output > Input)
     const passiveEnabled = document.getElementById('proto-passive-enable').checked;
     if (passiveEnabled) {
-        const earnSeconds = getConvertedVal('passive-reward-val', 'passive-reward-unit');
-        const workSeconds = getConvertedVal('passive-work-val', 'passive-work-unit');
-        if (earnSeconds > workSeconds) {
-            errors.push('<strong>Passive Inflation:</strong> You cannot earn more time than you work. This breaks the laws of physics (and productivity).');
+        const threshold = getConvertedVal('passive-work-val', 'passive-work-unit');
+        const reward = getConvertedVal('passive-reward-val', 'passive-reward-unit');
+        if (reward > threshold) {
+            errors.push({
+                message: '<strong>Passive Error:</strong> Reward value cannot exceed work threshold.',
+                elementId: 'passive-reward-val'
+            });
         }
     }
 
@@ -987,7 +1005,13 @@ function setupListeners() {
 
             if (!validation.valid) {
                 // Block save - show errors
-                showValidationWarning('<strong>Cannot save:</strong><br>' + validation.errors.join('<br>'));
+                validation.errors.forEach(err => {
+                    showValidationWarning(err.message, true);
+                    // Match the highlight logic
+                    const el = document.getElementById(err.elementId);
+                    const card = el?.closest('.settings-item-group') || el?.closest('.card-group') || el?.closest('.settings-section');
+                    if (card) card.classList.add('error-highlight');
+                });
                 return;
             }
 
@@ -1489,12 +1513,13 @@ function updateUIState() {
     }
     updateTypingEffectiveness();
 
-    // 4. Validation (Final Override for Strict Lock)
+    // 4. Validation (Surgical & Non-Destructive)
     const v = validateSettings();
     const hlSaveBtn = document.getElementById('save-difficulty-btn');
-    const hlView = document.getElementById('hardlock-config-view');
-    const hlScrollable = hlView?.querySelector('.scrollable-content');
     const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked;
+
+    // Remove all previous highlights
+    document.querySelectorAll('.error-highlight').forEach(el => el.classList.remove('error-highlight'));
 
     if (hlSaveBtn && isHLMasterOn) {
         if (v.errors.length > 0) {
@@ -1504,12 +1529,14 @@ function updateUIState() {
             hlSaveBtn.style.cursor = 'not-allowed';
             hlSaveBtn.style.pointerEvents = 'none';
             
-            showValidationWarning(v.errors[0]);
+            showValidationWarning(v.errors[0].message);
 
-            if (hlScrollable) {
-                hlScrollable.style.opacity = '0.6';
-                hlScrollable.style.filter = 'grayscale(0.5)';
-            }
+            // SURGICAL: Highlight only the cards with errors
+            v.errors.forEach(err => {
+                const el = document.getElementById(err.elementId);
+                const card = el?.closest('.settings-item-group') || el?.closest('.card-group') || el?.closest('.settings-section');
+                if (card) card.classList.add('error-highlight');
+            });
         } else {
             hlSaveBtn.disabled = false;
             hlSaveBtn.style.opacity = '1';
@@ -1517,15 +1544,9 @@ function updateUIState() {
             hlSaveBtn.style.cursor = 'pointer';
             hlSaveBtn.style.pointerEvents = 'auto';
 
-            if (hlScrollable) {
-                hlScrollable.style.opacity = '1';
-                hlScrollable.style.filter = 'none';
-            }
             hideValidationWarning();
         }
     } else {
-        // Master is OFF or no btn: Ensure no warning hangs around
-        // Note: applyMasterState already handled the fading/disabling when OFF
         hideValidationWarning();
     }
 }
