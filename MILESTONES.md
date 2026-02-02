@@ -4,7 +4,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 ### 📅 Current Golden State: Feb 2, 2026
 
-**Commit:** `[LATEST]`
+**Commit:** `8710562`
 **Status:** PASSWORD WORKFLOW REFINEMENT. Implemented mandatory current-password verification for updates. Dynamically shifted UI placeholders and labels ("Create" vs "Update"). Added "Show Passwords" support for all verification fields.
 
 ---
@@ -13,7 +13,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
-| Feb 2, 2026  | **Fix: Password Refinement**         | `[LATEST]`    | Mandatory old password check; dynamic "Update" vs "Create" UI polish.                      |
+| Feb 2, 2026  | **Fix: Password Refinement**         | `8710562`     | Mandatory old password check; dynamic "Update" vs "Create" UI polish.                      |
 | Feb 2, 2026  | **Fix: High Visibility Validation**  | `5fcc179`     | Moved error warnings out of faded area; forced 100% opacity for legibility.                |
 | Feb 2, 2026  | **Fix: Failsafe UI State**           | `e27a334`     | Fixed unclickable master switch and input re-enable logic.                                 |
 | Feb 1, 2026  | **Feat: Punchy Guilt Refine**        | `a35e144`     | Shortened text to "I'm giving in. Unlock." for visceral impact.                            |
@@ -37,9 +37,9 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 | Jan 31, 2026 | **Fix: Nuclear Quote Normalization** | `2d41daa`     | Expanded unicode coverage for MacOS/International quotes and dashes.                       |
 | Jan 31, 2026 | **Fix: Navigation Bypass Lock**      | `2d41daa`     | Fixed vulnerability where back/forward navigation could bypass the lock.                   |
 | Jan 31, 2026 | **Fix: Nuclear Media Enforcement**   | `2d41daa`     | Force-pausing media in ALL frames (including cross-domain iframes) using webNavigation.    |
-| Jan 31, 2026 | **Fix: MacOS Smart Quote Support**   | `[LATEST]`    | Expanded normalization for apostrophes to support MacOS typing challenges.                 |
-| Jan 30, 2026 | **Fix: Debug Trigger Relay**         | `[LATEST]`    | Moved Test Zone triggers to background relay to handle stale connections.                  |
-| Jan 30, 2026 | **Fix: Popup Unlock Sync**           | `[LATEST]`    | Replaced jittery reloads with dynamic broadcast for manual popup unlocks.                  |
+| Jan 31, 2026 | **Fix: MacOS Smart Quote Support**   | `8710562`     | Expanded normalization for apostrophes to support MacOS typing challenges.                 |
+| Jan 30, 2026 | **Fix: Debug Trigger Relay**         | `8710562`     | Moved Test Zone triggers to background relay to handle stale connections.                  |
+| Jan 30, 2026 | **Fix: Popup Unlock Sync**           | `8710562`     | Replaced jittery reloads with dynamic broadcast for manual popup unlocks.                  |
 | Jan 30, 2026 | **Fix: Multi-Tab Unlock Sync**       | `e9b3934`     | Synchronized unlock event across all tabs to prevent "jitter" and zombie locks.            |
 | Jan 30, 2026 | **Fix: Pause Screen Flicker**        | `e9b3934`     | Sync'd content script with background defaults to ensure OFF-by-default features stay off. |
 | Jan 30, 2026 | **Fix: Global Video Playback**       | `8ebf231`     | Restricted Pause/Media blocking to blacklisted sites only.                                 |
