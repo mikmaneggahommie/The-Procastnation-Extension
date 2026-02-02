@@ -822,33 +822,6 @@ function setupListeners() {
     });
 
     // --- REAL-TIME VALIDATION ---
-    function runLiveValidation() {
-        const validation = validateSettings();
-        const saveBtn = document.getElementById('save-difficulty-btn');
-
-        if (!validation.valid) {
-            showValidationWarning('<strong>⛔ Invalid:</strong> ' + validation.errors.join('<br>'));
-            if (saveBtn) {
-                saveBtn.disabled = true;
-                saveBtn.style.opacity = '0.5';
-                saveBtn.style.cursor = 'not-allowed';
-            }
-        } else if (validation.warnings.length > 0) {
-            showValidationWarning('⚠️ ' + validation.warnings.join('<br>'));
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.style.opacity = '1';
-                saveBtn.style.cursor = 'pointer';
-            }
-        } else {
-            hideValidationWarning();
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.style.opacity = '1';
-                saveBtn.style.cursor = 'pointer';
-            }
-        }
-    }
 
     // Attach live validation to all relevant inputs
     const validationInputs = [
@@ -862,8 +835,8 @@ function setupListeners() {
     validationInputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.addEventListener('change', runLiveValidation);
-            el.addEventListener('input', runLiveValidation);
+            el.addEventListener('change', updateUIState);
+            el.addEventListener('input', updateUIState);
         }
     });
 
@@ -1488,38 +1461,6 @@ function updateUIState() {
         rewardContainer.style.display = noneMode ? 'none' : 'block';
     }
 
-    // --- REAL-TIME SAVE VALIDATION ---
-    const v = validateSettings();
-    const saveBtn = document.getElementById('save-difficulty-btn');
-    const hlView = document.getElementById('hardlock-config-view');
-    const hlScrollable = hlView?.querySelector('.scrollable-content');
-
-    if (saveBtn) {
-        if (!v.valid) {
-            saveBtn.disabled = true;
-            saveBtn.style.opacity = '0.5';
-            saveBtn.style.cursor = 'not-allowed';
-            const errorMsg = v.errors.find(e => e.includes('Strict Lock Error')) || v.errors[0];
-            showValidationWarning(errorMsg);
-
-            // VISUAL FADE: Only if Strict Lock master is actually ON
-            if (currentSettings?.masterHardLock !== false && hlScrollable) {
-                hlScrollable.style.opacity = '0.6';
-                hlScrollable.style.filter = 'grayscale(0.5)';
-            }
-        } else {
-            saveBtn.disabled = false;
-            saveBtn.style.opacity = '1';
-            saveBtn.style.cursor = 'pointer';
-            hideValidationWarning();
-
-            // RESTORE VISUALS: Only if master is ON
-            if (currentSettings?.masterHardLock !== false && hlScrollable) {
-                hlScrollable.style.opacity = '1';
-                hlScrollable.style.filter = 'none';
-            }
-        }
-    }
 
     // --- TYPING EFFECTIVENESS ---
     updateTypingEffectiveness();
@@ -1571,6 +1512,47 @@ function updateUIState() {
         toggleSub('pause-trigger-browser-enable', 'config-pause-trigger-browser');
         toggleSub('reminder-trigger-browser-enable', 'config-reminder-trigger-browser');
         toggleSub('reminder-trigger-launch-enable', 'config-reminder-trigger-launch');
+    }
+
+    // --- REAL-TIME SAVE VALIDATION (FINAL OVERRIDE) ---
+    const v = validateSettings();
+    const hlSaveBtn = document.getElementById('save-difficulty-btn');
+    const hlView = document.getElementById('hardlock-config-view');
+    const hlScrollable = hlView?.querySelector('.scrollable-content');
+
+    // Filter for errors that are specific to the Strict Lock view
+    const hlErrors = v.errors.filter(e => e.includes('Strict Lock Error'));
+
+    if (hlSaveBtn) {
+        if (hlErrors.length > 0) {
+            hlSaveBtn.disabled = true;
+            hlSaveBtn.style.opacity = '0.35';
+            hlSaveBtn.style.filter = 'grayscale(1)';
+            hlSaveBtn.style.cursor = 'not-allowed';
+            hlSaveBtn.style.pointerEvents = 'none';
+            
+            showValidationWarning(hlErrors[0]);
+
+            if (hlScrollable) {
+                hlScrollable.style.opacity = '0.6';
+                hlScrollable.style.filter = 'grayscale(0.5)';
+            }
+        } else {
+            // Ensure button is re-enabled if no HL errors exist
+            hlSaveBtn.disabled = false;
+            hlSaveBtn.style.opacity = '1';
+            hlSaveBtn.style.filter = 'none';
+            hlSaveBtn.style.cursor = 'pointer';
+            hlSaveBtn.style.pointerEvents = 'auto';
+
+            if (hlScrollable) {
+                hlScrollable.style.opacity = '1';
+                hlScrollable.style.filter = 'none';
+            }
+            
+            // Clear warning if no HL errors (other non-HL errors might exist but we'll hide the generic warning here)
+            hideValidationWarning();
+        }
     }
 }
 
