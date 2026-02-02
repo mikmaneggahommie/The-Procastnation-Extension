@@ -164,6 +164,21 @@ function validateSettings() {
         if (!typeOn && !passOn && !delayOn && !passiveOn && !noneOn) {
             errors.push('<strong>Strict Lock Error:</strong> Select at least one Unlock Protocol (e.g. Typing or None).');
         }
+
+        // 3. Password Integrity Check (State-Aware)
+        if (passOn) {
+            const hasStored = !!(currentSettings?.unlockProtocols?.password?.value);
+            const isEditing = document.getElementById('password-setup-state')?.style.display !== 'none';
+            const newVal = document.getElementById('proto-password-val')?.value;
+            const confirmVal = document.getElementById('proto-password-confirm')?.value;
+
+            if (isEditing) {
+                if (!newVal) errors.push('<strong>Password Error:</strong> New password cannot be empty.');
+                if (newVal !== confirmVal) errors.push('<strong>Password Error:</strong> New passwords do not match.');
+            } else if (!hasStored) {
+                errors.push('<strong>Password Error:</strong> No password set. Please click "Update Password" to create one.');
+            }
+        }
     }
 
     // --- DOCTOR STRANGE HEURISTICS (Toxic Configs) ---
@@ -218,7 +233,7 @@ function showValidationWarning(message, isError = false) {
         banner.style.display = 'block';
 
         // Apply different colors for errors vs warnings
-        if (message.includes('Invalid') || message.includes('Cannot')) {
+        if (message.includes('Invalid') || message.includes('Cannot') || message.includes('Error')) {
             banner.style.background = '#F8D7DA';
             banner.style.border = '1px solid #F5C6CB';
             banner.style.color = '#721C24';
@@ -265,6 +280,16 @@ function setConvertedVal(id, unitId, totalSecs) {
         selector.value = 'sec';
     }
     updateUnitGrammar(id, unitId);
+}
+
+function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+}
+
+function setChk(id, checked) {
+    const el = document.getElementById(id);
+    if (el) el.checked = checked;
 }
 
 function updateUnitGrammar(inputId, unitId) {
@@ -691,101 +716,78 @@ function setupListeners() {
 
     // --- PASSWORD STRENGTH & MATCH ---
     function setupPasswordLogic() {
-        const passInput = document.getElementById('proto-password-val');
-        const confirmInput = document.getElementById('proto-password-confirm');
-        const strengthFill = document.getElementById('password-strength-fill');
-        const strengthText = document.getElementById('password-strength-text');
-        const matchStatus = document.getElementById('password-match-status');
-        const generateBtn = document.getElementById('generate-password-btn');
-
-        if (!passInput) return;
-
+        const pOldRow = document.getElementById('password-verify-section');
+        const pOldInput = document.getElementById('proto-password-old');
+        const pValInput = document.getElementById('proto-password-val');
+        const pConfirmInput = document.getElementById('proto-password-confirm');
+        const pEntryLabel = document.getElementById('password-entry-label');
+        
         const showPassChk = document.getElementById('show-password-chk');
-        const oldPassInput = document.getElementById('proto-password-old');
+        const matchStatus = document.getElementById('password-match-status');
+        const confirmBtn = document.getElementById('generate-password-btn');
+        const cancelBtn = document.getElementById('cancel-password-setup-btn');
+
+        if (!pValInput) return;
+
+        // 1. Show/Hide toggle
         if (showPassChk) {
             showPassChk.onchange = () => {
                 const type = showPassChk.checked ? 'text' : 'password';
-                passInput.type = type;
-                if (confirmInput) confirmInput.type = type;
-                if (oldPassInput) oldPassInput.type = type;
+                pValInput.type = type;
+                if (pConfirmInput) pConfirmInput.type = type;
+                if (pOldInput) pOldInput.type = type;
             };
         }
 
-        passInput.oninput = () => {
-            const val = passInput.value;
-            if (strengthFill) strengthFill.className = 'strength-fill';
-
-            if (val.length === 0) {
-                if (strengthText) strengthText.textContent = 'Enter a password';
-            } else if (val.length < 6) {
-                if (strengthFill) strengthFill.classList.add('weak');
-                if (strengthText) strengthText.textContent = 'Weak';
-            } else if (val.length < 10 || !/[A-Z]/.test(val) || !/[0-9]/.test(val)) {
-                if (strengthFill) strengthFill.classList.add('medium');
-                if (strengthText) strengthText.textContent = 'Medium';
-            } else {
-                if (strengthFill) strengthFill.classList.add('strong');
-                if (strengthText) strengthText.textContent = 'Strong';
-            }
-            checkMatch();
-        };
-
-        if (confirmInput) {
-            confirmInput.oninput = checkMatch;
-        }
-
-        function checkMatch() {
-            if (!matchStatus) return;
-            const p1 = passInput.value;
-            const p2 = confirmInput ? confirmInput.value : '';
-
-            if (!p1 || !p2) {
+        // 2. Real-time match feedback
+        const checkMatch = () => {
+            if (!pConfirmInput.value) {
                 matchStatus.textContent = '';
                 return;
             }
-
-            if (p1 === p2) {
-                matchStatus.textContent = '✅ Passwords match';
+            if (pValInput.value === pConfirmInput.value) {
+                matchStatus.textContent = '✓ Passwords match';
                 matchStatus.style.color = '#34C759';
             } else {
-                matchStatus.textContent = '❌ Passwords do not match';
+                matchStatus.textContent = '✕ Passwords do not match';
                 matchStatus.style.color = '#FF3B30';
             }
-        }
+        };
+        pValInput.oninput = checkMatch;
+        pConfirmInput.oninput = checkMatch;
 
-        if (generateBtn) {
-            generateBtn.onclick = () => {
-                const pOld = document.getElementById('proto-password-old');
-                const p1 = passInput.value;
-                const p2 = confirmInput ? confirmInput.value : '';
-
-                // If a password already exists, verify the old one
-                if (currentSettings?.unlockProtocols?.password?.value) {
-                    if (pOld.value !== currentSettings.unlockProtocols.password.value) {
-                        alert('Current password incorrect. Please try again.');
+        // 3. The "Confirm" (Commit to Buffer) button
+        if (confirmBtn) {
+            confirmBtn.onclick = () => {
+                const hasExisting = !!(currentSettings?.unlockProtocols?.password?.value);
+                
+                // Verification check if updating
+                if (hasExisting && pOldRow?.style.display !== 'none') {
+                    if (pOldInput.value !== currentSettings.unlockProtocols.password.value) {
+                        showValidationWarning('<strong>Security Error:</strong> Current password incorrect.');
                         return;
                     }
                 }
 
-                if (!p1) {
-                    alert('Please enter a new password');
+                if (!pValInput.value) {
+                    showValidationWarning('<strong>Validation Error:</strong> Please enter a new password.');
                     return;
                 }
-                if (p1 !== p2) {
-                    alert('New passwords do not match!');
-                } else {
-                    // Switch to active state immediately
-                    const setupState = document.getElementById('password-setup-state');
-                    const activeState = document.getElementById('password-active-state');
-                    const cancelBtn = document.getElementById('cancel-password-setup-btn');
-
-                    if (setupState) setupState.style.display = 'none';
-                    if (activeState) activeState.style.display = 'block';
-                    if (cancelBtn) cancelBtn.style.display = 'block';
-
-                    // Clear old password field for safety
-                    if (pOld) pOld.value = '';
+                if (pValInput.value !== pConfirmInput.value) {
+                    showValidationWarning('<strong>Validation Error:</strong> New passwords do not match.');
+                    return;
                 }
+
+                // Success transition
+                const setupState = document.getElementById('password-setup-state');
+                const activeState = document.getElementById('password-active-state');
+                if (setupState) setupState.style.display = 'none';
+                if (activeState) activeState.style.display = 'block';
+                if (cancelBtn) cancelBtn.style.display = 'block';
+
+                // We don't save to storage yet, just let the user see "Active" 
+                // and then they can click the main "Save Settings" button.
+                hideValidationWarning();
             };
         }
     }
@@ -936,22 +938,6 @@ function setupListeners() {
 
             currentSettings.unlockRewardType = document.getElementById('unlock-reward-unit').value;
 
-            // Password Validation
-            const passEnabled = document.getElementById('proto-password-enable').checked;
-            const p1 = document.getElementById('proto-password-val').value;
-            const p2 = document.getElementById('proto-password-confirm').value;
-
-            if (passEnabled) {
-                if (passEnabled && !p1) {
-                    alert('Configuration Error: A password is required when Password Protection is enabled.');
-                    return false;
-                }
-                if (passEnabled && p1 !== p2) {
-                    alert('Configuration Error: New password and confirmation do not match.');
-                    return false;
-                }
-            }
-
             // Maintain legacy field for compatibility
             currentSettings.hardLockDuration = currentSettings.hardLockTriggers.sessionLimit.value;
 
@@ -963,7 +949,7 @@ function setupListeners() {
                 },
                 password: {
                     enabled: document.getElementById('proto-password-enable').checked,
-                    value: document.getElementById('proto-password-val').value || currentSettings.unlockProtocols.password.value // Keep old password if input empty
+                    value: document.getElementById('proto-password-val').value || (currentSettings.unlockProtocols?.password?.value || '')
                 },
                 delay: {
                     enabled: document.getElementById('proto-delay-enable').checked,
@@ -1089,30 +1075,41 @@ function setupListeners() {
     // We attach it to DOM now so it runs on init in populate.
     window.triggerProtocolUIUpdate = updateUIState;
 
-    // Handle Password Dual-State
+    // Handle Password Dual-State (Toggle between view/edit)
     const updateBtn = document.getElementById('toggle-password-setup-btn');
     const cancelBtn = document.getElementById('cancel-password-setup-btn');
     const setupState = document.getElementById('password-setup-state');
     const activeState = document.getElementById('password-active-state');
-    const oldPassInput = document.getElementById('proto-password-old');
+    
+    // Rows to toggle
+    const verifySec = document.getElementById('password-verify-section');
+    const entryLabel = document.getElementById('password-entry-label');
     const confirmBtn = document.getElementById('generate-password-btn');
-    const passInput = document.getElementById('proto-password-val');
 
     if (updateBtn) {
-        updateBtn.addEventListener('click', () => {
+        updateBtn.onclick = () => {
+            const hasExisting = !!(currentSettings?.unlockProtocols?.password?.value);
             if (setupState) setupState.style.display = 'block';
             if (activeState) activeState.style.display = 'none';
-            if (oldPassInput) oldPassInput.style.display = 'block';
-            if (confirmBtn) confirmBtn.textContent = 'Confirm New Password';
-            if (passInput) passInput.placeholder = 'New password...';
-        });
+
+            // Configure sub-states
+            if (hasExisting) {
+                if (verifySec) verifySec.style.display = 'block';
+                if (entryLabel) entryLabel.textContent = 'Set New Password';
+                if (confirmBtn) confirmBtn.textContent = 'Confirm New Password';
+            } else {
+                if (verifySec) verifySec.style.display = 'none';
+                if (entryLabel) entryLabel.textContent = 'Create Master Password';
+                if (confirmBtn) confirmBtn.textContent = 'Confirm Password';
+            }
+        };
     }
 
     if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => {
+        cancelBtn.onclick = () => {
             if (setupState) setupState.style.display = 'none';
             if (activeState) activeState.style.display = 'block';
-        });
+        };
     }
 
     // --- DEVELOPER/TEST BUTTONS ---
@@ -1183,26 +1180,25 @@ populateInputs = function () {
     const activeState = document.getElementById('password-active-state');
     const setupState = document.getElementById('password-setup-state');
     const cancelBtn = document.getElementById('cancel-password-setup-btn');
-    const oldPassInput = document.getElementById('proto-password-old');
+    const verifySec = document.getElementById('password-verify-section');
+    const entryLabel = document.getElementById('password-entry-label');
     const confirmBtn = document.getElementById('generate-password-btn');
-    const passInput = document.getElementById('proto-password-val');
 
     if (p.password?.value) {
-        // PASSWORD EXISTS (Update Flow)
+        // STATE: ACTIVE
         if (activeState) activeState.style.display = 'block';
         if (setupState) setupState.style.display = 'none';
         if (cancelBtn) cancelBtn.style.display = 'block';
-        if (oldPassInput) oldPassInput.style.display = 'block';
-        if (confirmBtn) confirmBtn.textContent = 'Confirm New Password';
-        if (passInput) passInput.placeholder = 'New password...';
     } else {
-        // NO PASSWORD (Create Flow)
+        // STATE: UNSET
         if (activeState) activeState.style.display = 'none';
         if (setupState) setupState.style.display = 'block';
         if (cancelBtn) cancelBtn.style.display = 'none';
-        if (oldPassInput) oldPassInput.style.display = 'none';
+        
+        // Ensure create-mode texts
+        if (verifySec) verifySec.style.display = 'none';
+        if (entryLabel) entryLabel.textContent = 'Create Master Password';
         if (confirmBtn) confirmBtn.textContent = 'Confirm Password';
-        if (passInput) passInput.placeholder = 'Create password...';
     }
 
     setVal('proto-password-old', '');

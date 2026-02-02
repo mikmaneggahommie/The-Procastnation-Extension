@@ -717,16 +717,45 @@ select.clean-input:focus {
   /* Use background-color so we don't wipe the arrow image */
 }
 
-/* --- VALIDATION WARNING (Always Bright) --- */
-.validation-warning {
-  opacity: 1 !important;
-  filter: none !important;
-  pointer-events: auto !important;
-  margin: 16px;
-  border-radius: 12px;
-  padding: 12px 16px;
-  transition: all 0.3s ease;
-  z-index: 100;
+/* --- PREMIUM PASSWORD UI --- */
+.password-active-card {
+  background: #f0fff4;
+  border: 1px solid #c6f6d5;
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  transition: transform 0.2s ease;
+}
+
+.password-active-card:hover {
+  transform: translateY(-1px);
+}
+
+.password-active-icon {
+  font-size: 22px;
+}
+
+.password-active-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #22543d;
+}
+
+.password-active-subtitle {
+  font-size: 12px;
+  color: #38a169;
+}
+
+.config-label-uppercase {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 
 .validation-warning-content {

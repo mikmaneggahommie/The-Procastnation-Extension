@@ -767,32 +767,12 @@
                 ></label>
               </div>
               <div class="sub-config" id="config-password">
-                <div
-                  id="password-active-state"
-                  style="
-                    display: none;
-                    padding: 12px;
-                    background: rgba(52, 199, 89, 0.05);
-                    border-radius: 12px;
-                    border: 1px solid rgba(52, 199, 89, 0.2);
-                    margin-bottom: 8px;
-                  "
-                >
-                  <div style="display: flex; align-items: center; gap: 8px">
-                    <span style="font-size: 18px">✅</span>
+                <div id="password-active-state" style="display: none">
+                  <div class="password-active-card">
+                    <span class="password-active-icon">✅</span>
                     <div>
-                      <div
-                        style="
-                          font-size: 14px;
-                          font-weight: 600;
-                          color: #1d1d1f;
-                        "
-                      >
-                        Password Protection Active
-                      </div>
-                      <div style="font-size: 12px; color: #666">
-                        Site is securely locked.
-                      </div>
+                      <div class="password-active-title">Password Protection Active</div>
+                      <div class="password-active-subtitle">Site is securely locked.</div>
                     </div>
                   </div>
                   <button
@@ -811,75 +791,51 @@
                     Update Password
                   </button>
                 </div>
-                <div id="password-setup-state">
-                  <input
-                    type="password"
-                    id="proto-password-old"
-                    placeholder="Enter current password..."
-                    class="config-input"
-                    style="margin-bottom: 8px; display: none"
-                  />
-                  <input
-                    type="password"
-                    id="proto-password-val"
-                    placeholder="Create password..."
-                    class="config-input"
-                  />
-                  <input
-                    type="password"
-                    id="proto-password-confirm"
-                    placeholder="Confirm password..."
-                    class="config-input"
-                    style="margin-top: 8px"
-                  />
-                  <div
-                    style="
-                      display: flex;
-                      align-items: center;
-                      gap: 8px;
-                      margin-top: 8px;
-                      padding-left: 4px;
-                    "
-                  >
+                <!-- Password Configuration Container -->
+                <div id="password-setup-state" style="margin-top: 12px">
+                  <!-- Section 1: Verification (Only for Update) -->
+                  <div id="password-verify-section" style="display: none">
+                    <div class="config-label-uppercase">Current Security Key</div>
                     <input
-                      type="checkbox"
-                      id="show-password-chk"
-                      style="width: 14px; height: 14px; cursor: pointer"
+                      type="password"
+                      id="proto-password-old"
+                      placeholder="Enter current password..."
+                      class="config-input"
+                      style="margin-bottom: 12px"
                     />
-                    <label
-                      for="show-password-chk"
-                      style="font-size: 12px; color: #666; cursor: pointer"
-                      >Show Passwords</label
-                    >
                   </div>
-                  <div
-                    id="password-match-status"
-                    class="match-status"
-                    style="margin-top: 8px; padding-left: 4px"
-                  ></div>
+
+                  <!-- Section 2: New Entry -->
+                  <div id="password-entry-section">
+                    <div id="password-entry-label" class="config-label-uppercase">Set New Password</div>
+                    <input
+                      type="password"
+                      id="proto-password-val"
+                      placeholder="New password..."
+                      class="config-input"
+                    />
+                    <input
+                      type="password"
+                      id="proto-password-confirm"
+                      placeholder="Confirm new password..."
+                      class="config-input"
+                      style="margin-top: 8px"
+                    />
+                  </div>
+
+                  <!-- Controls & Status -->
+                  <div style="display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-left: 2px;">
+                    <input type="checkbox" id="show-password-chk" style="width: 14px; height: 14px; cursor: pointer" />
+                    <label for="show-password-chk" style="font-size: 12px; color: #666; cursor: pointer">Show Passwords</label>
+                  </div>
+                  
+                  <div id="password-match-status" class="match-status" style="margin-top: 8px; padding-left: 4px"></div>
+
                   <div style="display: flex; gap: 8px; margin-top: 12px">
-                    <button
-                      type="button"
-                      id="generate-password-btn"
-                      class="action-btn"
-                      style="flex: 1; height: 40px; font-size: 14px"
-                    >
+                    <button type="button" id="generate-password-btn" class="action-btn" style="flex: 1; height: 40px; font-size: 14px">
                       Confirm Password
                     </button>
-                    <button
-                      type="button"
-                      id="cancel-password-setup-btn"
-                      class="action-btn"
-                      style="
-                        display: none;
-                        width: 80px;
-                        height: 40px;
-                        font-size: 14px;
-                        background: #f2f2f7;
-                        color: #1d1d1f;
-                        border: 1px solid #e5e5ea;
-                      "
-                    >
+                    <button type="button" id="cancel-password-setup-btn" class="action-btn" style="display: none; width: 80px; height: 40px; font-size: 14px; background: #f2f2f7; color: #1d1d1f; border: 1px solid #e5e5ea;">
                       Cancel
                     </button>
                   </div>
