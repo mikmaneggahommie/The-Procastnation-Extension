@@ -166,20 +166,16 @@ function validateSettings() {
         }
 
         // 3. Password Integrity Check (State-Aware)
+        // NOTE: During EDITING, we no longer show errors here - the Confirm button handles progressive disclosure
+        // We only block if password is enabled but NO password exists (neither stored nor in buffer)
         if (passOn) {
             const hasStored = !!(currentSettings?.unlockProtocols?.password?.value);
             const isEditing = document.getElementById('password-setup-state')?.style.display !== 'none';
             const newVal = document.getElementById('proto-password-val')?.value;
-            const confirmVal = document.getElementById('proto-password-confirm')?.value;
 
-            if (isEditing) {
-                if (!newVal) errors.push('<strong>Password Error:</strong> New password cannot be empty.');
-                if (newVal !== confirmVal) errors.push('<strong>Password Error:</strong> New passwords do not match.');
-            } else {
-                // Not editing (Active State): Must have EITHER stored value OR un-saved input buffer
-                if (!hasStored && !newVal) {
-                    errors.push('<strong>Password Error:</strong> No password set. Click "Update Password" to create one.');
-                }
+            // Only show error if NOT editing AND no stored password AND no buffer value
+            if (!isEditing && !hasStored && !newVal) {
+                errors.push('<strong>Password Error:</strong> No password set. Click "Update Password" to create one.');
             }
         }
     }
@@ -737,6 +733,34 @@ function setupListeners() {
 
         if (!pValInput) return;
 
+        // HELPER: Update Confirm button state based on password validity
+        const updateConfirmButtonState = () => {
+            if (!confirmBtn) return;
+            
+            const newVal = pValInput.value;
+            const confirmVal = pConfirmInput?.value || '';
+            const isValid = newVal.length > 0 && newVal === confirmVal;
+            
+            if (isValid) {
+                // VALID: Enable and fill the button
+                confirmBtn.disabled = false;
+                confirmBtn.style.opacity = '1';
+                confirmBtn.style.filter = 'none';
+                confirmBtn.style.cursor = 'pointer';
+                confirmBtn.style.pointerEvents = 'auto';
+            } else {
+                // INVALID: Fade and disable the button
+                confirmBtn.disabled = true;
+                confirmBtn.style.opacity = '0.35';
+                confirmBtn.style.filter = 'grayscale(1)';
+                confirmBtn.style.cursor = 'not-allowed';
+                confirmBtn.style.pointerEvents = 'none';
+            }
+        };
+        
+        // Initialize button as faded on setup
+        updateConfirmButtonState();
+
         // 1. Show/Hide toggle
         if (showPassChk) {
             showPassChk.onchange = () => {
@@ -747,19 +771,20 @@ function setupListeners() {
             };
         }
 
-        // 2. Real-time match feedback
+        // 2. Real-time match feedback + button state update
         const checkMatch = () => {
             if (!pConfirmInput.value) {
                 matchStatus.textContent = '';
-                return;
-            }
-            if (pValInput.value === pConfirmInput.value) {
+            } else if (pValInput.value === pConfirmInput.value) {
                 matchStatus.textContent = '✓ Passwords match';
                 matchStatus.style.color = '#34C759';
             } else {
                 matchStatus.textContent = '✕ Passwords do not match';
                 matchStatus.style.color = '#FF3B30';
             }
+            
+            // PROGRESSIVE DISCLOSURE: Update button state on every keystroke
+            updateConfirmButtonState();
         };
         pValInput.oninput = checkMatch;
         pConfirmInput.oninput = checkMatch;
@@ -777,13 +802,9 @@ function setupListeners() {
                     }
                 }
 
-                if (!pValInput.value) {
-                    showValidationWarning('<strong>Validation Error:</strong> Please enter a new password.');
-                    return;
-                }
-                if (pValInput.value !== pConfirmInput.value) {
-                    showValidationWarning('<strong>Validation Error:</strong> New passwords do not match.');
-                    return;
+                // These checks should never trigger due to progressive disclosure, but keep as safety net
+                if (!pValInput.value || pValInput.value !== pConfirmInput.value) {
+                    return; // Silently ignore - button shouldn't be clickable anyway
                 }
 
                 // Success transition
