@@ -4,8 +4,8 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 ### 📅 Current Golden State: Feb 2, 2026
 
-**Commit:** `5968982`
-**Status:** UNIFIED UI STATE. Rewrote `updateUIState` to eliminate leaky global loops. Standardized Master Switch fading (0.35 opacity + grayscale). Validation is now perfectly localized and respects master states.
+**Commit:** `e27a334`
+**Status:** FAILSAFE UI STATE. Fixed master switch interaction bug by moving control banners outside scrollable content. Refined `applyMasterState` to robustly re-enable inputs when switching ON.
 
 ---
 

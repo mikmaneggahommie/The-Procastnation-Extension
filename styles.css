@@ -717,6 +717,41 @@ select.clean-input:focus {
   /* Use background-color so we don't wipe the arrow image */
 }
 
+/* --- VALIDATION WARNING (Always Bright) --- */
+.validation-warning {
+  opacity: 1 !important;
+  filter: none !important;
+  pointer-events: auto !important;
+  margin: 16px;
+  border-radius: 12px;
+  padding: 12px 16px;
+  transition: all 0.3s ease;
+  z-index: 100;
+}
+
+.validation-warning-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.validation-warning-icon {
+  font-size: 20px;
+}
+
+.validation-warning-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.validation-warning-message {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .action-btn {
   background: #1d1d1f;
   color: white;
@@ -1644,5 +1679,3 @@ input[type="number"]::-webkit-outer-spin-button {
   opacity: 1;
   transform: translate(-50%, 0);
 }
-
-
