@@ -666,7 +666,7 @@ function setupListeners() {
                 helpModalIcon.textContent = content.icon;
                 helpModalTitle.textContent = content.title;
                 helpModalText.textContent = content.text;
-                helpModal.style.display = 'block';
+                helpModal.style.display = 'flex';
             }
         });
     });
@@ -935,7 +935,7 @@ function setupListeners() {
             if (e.target.checked) {
                 // Show confirmation modal
                 e.target.checked = false; // Revert immediately
-                noneModal.style.display = 'block';
+                noneModal.style.display = 'flex';
             } else {
                 updateUIState();
             }
@@ -1086,7 +1086,7 @@ function setupListeners() {
     if (addShortcutBtn) {
         addShortcutBtn.addEventListener('click', () => {
             if ((currentSettings.shortcuts || []).length >= 6) {
-                alert("You can't do that. The max is 6 shortcut apps");
+                showCustomAlert("Limit Reached", "You can't do that. The max is 6 shortcut apps.");
                 return;
             }
             const n = document.getElementById('new-shortcut-name').value.trim();
@@ -1670,6 +1670,31 @@ function forceDisable(id, disable) {
     }
 }
 
+
+function showCustomAlert(title, message) {
+    const modal = document.getElementById('custom-alert-modal');
+    const titleEl = modal.querySelector('.cure-modal-title');
+    const msgEl = modal.querySelector('.cure-modal-message');
+    const okBtn = document.getElementById('custom-alert-ok-btn');
+
+    if (modal && titleEl && msgEl) {
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        modal.style.display = 'flex';
+        
+        okBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+        
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+        };
+    } else {
+        // Fallback if modal DOM is missing
+        alert(message);
+    }
+}
 
 function updateTypingEffectiveness() {
     const input = document.getElementById('challenge-length-input');

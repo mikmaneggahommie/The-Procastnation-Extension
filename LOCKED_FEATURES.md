@@ -66,3 +66,17 @@ This feature is highly sensitive to the browser's rendering lifecycle. It has br
 3.  **Filtered Broadcast**: `updateSettings` selectively sends frozen snapshots to locked tabs and global settings to active ones.
     - **RULE**: Always check the tab's hostname against the snapshot registry before broadcasting.
 4.  **No Client-Side Storage**: `content.js` must NOT maintain its own rule overrides; it must trust the background's `getSettings` response.
+
+---
+
+## 4. Unified Modal System
+
+**Status**: ✅ STABLE (Verified Feb 2, 2026)
+**Files**: `popup.html`, `styles.css`, `popup.js`
+
+### 🔒 Implementation Constraints
+
+1.  **Centered Display**: Must use `display: flex` on the overlay in `popup.js` to ensure centering via CSS. `display: block` will break the centering.
+2.  **Width Consistency**: Max-width is locked at `280px` for a "lesser" compact feel.
+3.  **Backdrop**: Uses `backdrop-filter: blur(4px)` for a premium feel.
+4.  **Shared Classes**: Uses `.cure-modal-card` and `.cure-modal-overlay`. Do NOT revert to inline styles or unique classes for `none-confirm` or `help-modal`.
