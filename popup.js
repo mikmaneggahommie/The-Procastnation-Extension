@@ -91,7 +91,7 @@ function saveSettings() {
 
 /**
  * Validates settings before saving.
- * Returns { valid: boolean, warnings: [{message, elementId}], errors: [{message, elementId}] }
+ * Returns { valid: boolean, warnings: string[], errors: string[] }
  */
 function validateSettings() {
     const errors = [];
@@ -119,10 +119,7 @@ function validateSettings() {
         if (limitSeconds >= windowSeconds) {
             const limitStr = formatTime(limitSeconds);
             const windowStr = formatWindow(windowSeconds);
-            errors.push({
-                message: `Limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}). This creates a deadlock.`,
-                elementId: 'hardlock-input'
-            });
+            errors.push(`Limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}). This creates a deadlock.`);
         }
     }
 
@@ -130,10 +127,7 @@ function validateSettings() {
         if (browserLimitSeconds >= browserWindowSeconds) {
             const limitStr = formatTime(browserLimitSeconds);
             const windowStr = formatWindow(browserWindowSeconds);
-            errors.push({
-                message: `Browser limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}).`,
-                elementId: 'browser-limit-input'
-            });
+            errors.push(`Browser limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}).`);
         }
     }
 
@@ -142,10 +136,10 @@ function validateSettings() {
 
     // VALIDATION RULE 3: Minimum limit of 1 minute (prevents instant lock)
     if (sessionEnabled && limitSeconds < 60) {
-        errors.push({ message: 'Limit must be at least 1 minute.', elementId: 'hardlock-input' });
+        errors.push('Limit must be at least 1 minute.');
     }
     if (browserEnabled && browserLimitSeconds < 60) {
-        errors.push({ message: 'Browser limit must be at least 1 minute.', elementId: 'browser-limit-input' });
+        errors.push('Browser limit must be at least 1 minute.');
     }
 
     // --- STRICT LOCK ENFORCEMENT ---
@@ -157,10 +151,7 @@ function validateSettings() {
         const browserOn = document.getElementById('trigger-browser-enable').checked;
 
         if (!sessionOn && !launchOn && !browserOn) {
-            errors.push({
-                message: '<strong>Strict Lock Error:</strong> Select at least one Activation Method (e.g. Site Activity Limit).',
-                elementId: 'master-hardlock-enable'
-            });
+            errors.push('<strong>Strict Lock Error:</strong> Select at least one Activation Method.');
         }
 
         // 2. Protocol Required
@@ -171,10 +162,7 @@ function validateSettings() {
         const noneOn = document.getElementById('proto-godmode-enable').checked;
 
         if (!typeOn && !passOn && !delayOn && !passiveOn && !noneOn) {
-            errors.push({
-                message: '<strong>Strict Lock Error:</strong> Select at least one Unlock Protocol (e.g. Typing or None).',
-                elementId: 'master-hardlock-enable'
-            });
+            errors.push('<strong>Strict Lock Error:</strong> Select at least one Unlock Protocol.');
         }
 
         // 3. Password Integrity Check (State-Aware)
@@ -185,10 +173,10 @@ function validateSettings() {
             const confirmVal = document.getElementById('proto-password-confirm')?.value;
 
             if (isEditing) {
-                if (!newVal) errors.push({ message: '<strong>Password Error:</strong> New password cannot be empty.', elementId: 'proto-password-val' });
-                if (newVal !== confirmVal) errors.push({ message: '<strong>Password Error:</strong> New passwords do not match.', elementId: 'proto-password-confirm' });
+                if (!newVal) errors.push('<strong>Password Error:</strong> New password cannot be empty.');
+                if (newVal !== confirmVal) errors.push('<strong>Password Error:</strong> New passwords do not match.');
             } else if (!hasStored) {
-                errors.push({ message: '<strong>Password Error:</strong> No password set. Please click "Update Password" to create one.', elementId: 'proto-password-enable' });
+                errors.push('<strong>Password Error:</strong> No password set. Click "Update Password" to create one.');
             }
         }
     }
@@ -198,10 +186,7 @@ function validateSettings() {
     // RULE 4: The Flicker Trap (Limit > 95% of Window)
     if (sessionEnabled && windowSeconds > 0) {
         if (limitSeconds > windowSeconds * 0.95) {
-            warnings.push({
-                message: '<strong>Flicker Warning:</strong> Limit is very close to window size. You may get locked/unlocked constantly.',
-                elementId: 'hardlock-input'
-            });
+            warnings.push('<strong>Flicker Warning:</strong> Limit is very close to window size.');
         }
     }
 
@@ -215,10 +200,7 @@ function validateSettings() {
         const threshold = getConvertedVal('passive-work-val', 'passive-work-unit');
         const reward = getConvertedVal('passive-reward-val', 'passive-reward-unit');
         if (reward > threshold) {
-            errors.push({
-                message: '<strong>Passive Error:</strong> Reward value cannot exceed work threshold.',
-                elementId: 'passive-reward-val'
-            });
+            errors.push('<strong>Passive Error:</strong> Reward value cannot exceed work threshold.');
         }
     }
 
@@ -1005,19 +987,13 @@ function setupListeners() {
 
             if (!validation.valid) {
                 // Block save - show errors
-                validation.errors.forEach(err => {
-                    showValidationWarning(err.message, true);
-                    // Match the highlight logic
-                    const el = document.getElementById(err.elementId);
-                    const card = el?.closest('.settings-item-group') || el?.closest('.card-group') || el?.closest('.settings-section');
-                    if (card) card.classList.add('error-highlight');
-                });
+                showValidationWarning(validation.errors[0], true);
                 return;
             }
 
             if (validation.warnings.length > 0) {
                 // Show warnings but allow save
-                showValidationWarning(validation.warnings[0].message);
+                showValidationWarning(validation.warnings[0]);
             }
  else {
                 hideValidationWarning();
@@ -1514,13 +1490,10 @@ function updateUIState() {
     }
     updateTypingEffectiveness();
 
-    // 4. Validation (Surgical & Non-Destructive)
+    // 4. Validation (Visual Polish)
     const v = validateSettings();
     const hlSaveBtn = document.getElementById('save-difficulty-btn');
     const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked;
-
-    // Remove all previous highlights
-    document.querySelectorAll('.error-highlight').forEach(el => el.classList.remove('error-highlight'));
 
     if (hlSaveBtn && isHLMasterOn) {
         if (v.errors.length > 0) {
@@ -1530,14 +1503,7 @@ function updateUIState() {
             hlSaveBtn.style.cursor = 'not-allowed';
             hlSaveBtn.style.pointerEvents = 'none';
             
-            showValidationWarning(v.errors[0].message, true);
-
-            // SURGICAL: Highlight only the cards with errors
-            v.errors.forEach(err => {
-                const el = document.getElementById(err.elementId);
-                const card = el?.closest('.settings-item-group') || el?.closest('.card-group') || el?.closest('.settings-section');
-                if (card) card.classList.add('error-highlight');
-            });
+            showValidationWarning(v.errors[0], true);
         } else {
             hlSaveBtn.disabled = false;
             hlSaveBtn.style.opacity = '1';

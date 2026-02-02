@@ -805,18 +805,6 @@ select.clean-input:focus {
   line-height: 1.4;
 }
 
-/* --- SURGICAL ERROR HIGHLIGHTING --- */
-.error-highlight {
-  border: 1.5px solid #ff3b30 !important;
-  box-shadow: 0 0 8px rgba(255, 59, 48, 0.2) !important;
-  background: #fffafa !important;
-  transition: all 0.2s ease;
-}
-
-.error-highlight h3 {
-  color: #ff3b30 !important;
-}
-
 .action-btn {
   background: #1d1d1f;
   color: white;
