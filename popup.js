@@ -1144,6 +1144,15 @@ function setupListeners() {
                 if (entryLabel) entryLabel.textContent = 'Create Master Password';
                 if (confirmBtn) confirmBtn.textContent = 'Confirm Password';
             }
+            
+            // PROGRESSIVE DISCLOSURE: Fade the Confirm button until passwords match
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+                confirmBtn.style.opacity = '0.35';
+                confirmBtn.style.filter = 'grayscale(1)';
+                confirmBtn.style.cursor = 'not-allowed';
+                confirmBtn.style.pointerEvents = 'none';
+            }
         };
     }
 
@@ -1240,7 +1249,15 @@ populateInputs = function () {
         // Ensure create-mode texts
         if (verifySec) verifySec.style.display = 'none';
         if (entryLabel) entryLabel.textContent = 'Create Master Password';
-        if (confirmBtn) confirmBtn.textContent = 'Confirm Password';
+        if (confirmBtn) {
+            confirmBtn.textContent = 'Confirm Password';
+            // PROGRESSIVE DISCLOSURE: Start faded until passwords match
+            confirmBtn.disabled = true;
+            confirmBtn.style.opacity = '0.35';
+            confirmBtn.style.filter = 'grayscale(1)';
+            confirmBtn.style.cursor = 'not-allowed';
+            confirmBtn.style.pointerEvents = 'none';
+        }
     }
 
     setVal('proto-password-old', '');
