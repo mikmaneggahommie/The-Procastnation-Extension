@@ -1411,119 +1411,59 @@ function setupNewViewListeners() {
 // --- GLOBAL UI FUNCTIONS ---
 
 function updateUIState() {
-    // Toggle Sub-Configs based on switches
+    // 1. Feature Sub-Configs (Triggers & Protocols)
     toggleSub('proto-typing-enable', 'config-typing');
     toggleSub('proto-password-enable', 'config-password');
     toggleSub('proto-delay-enable', 'config-delay');
     toggleSub('proto-godmode-enable', 'config-godmode');
     toggleSub('proto-passive-enable', 'config-passive');
-
-    // New Triggers
     toggleSub('trigger-session-enable', 'config-trigger-session');
     toggleSub('trigger-browser-enable', 'config-browser-limit');
     toggleSub('trigger-launch-enable', 'config-launch-limit');
-
-    // Pause Triggers
     toggleSub('pause-trigger-launch-enable', 'config-pause-trigger-launch');
     toggleSub('pause-trigger-browser-enable', 'config-pause-trigger-browser');
-    // Reminders Triggers
     toggleSub('reminder-trigger-browser-enable', 'config-reminder-trigger-browser');
     toggleSub('reminder-trigger-launch-enable', 'config-reminder-trigger-launch');
+    toggleSub('pill-enable-input', 'config-pill-whitelist');
 
-    // None Mode Logic
+    // 2. Specialized Logic (None Mode, Rewards, Typing)
     const noneMode = document.getElementById('proto-godmode-enable')?.checked;
-
-    // Safety check for critical elements
-    if (!document.getElementById('proto-godmode-enable')) return;
-
     if (noneMode) {
         forceDisable('proto-typing-enable', true);
         forceDisable('proto-password-enable', true);
         forceDisable('proto-delay-enable', true);
-
-        toggleSub('proto-typing-enable', 'config-typing');
-        toggleSub('proto-password-enable', 'config-password');
-        toggleSub('proto-delay-enable', 'config-delay');
     } else {
         forceDisable('proto-typing-enable', false);
         forceDisable('proto-password-enable', false);
         forceDisable('proto-delay-enable', false);
-
-        // Re-check states
-        toggleSub('proto-typing-enable', 'config-typing');
-        toggleSub('proto-password-enable', 'config-password');
-        toggleSub('proto-delay-enable', 'config-delay');
     }
 
-    // Hide Reward Time if None Mode is ON
     const rewardContainer = document.getElementById('reward-time-container');
     if (rewardContainer) {
         rewardContainer.style.display = noneMode ? 'none' : 'block';
     }
-
-
-    // --- TYPING EFFECTIVENESS ---
     updateTypingEffectiveness();
 
-    // General Pill Sub-config
-    toggleSub('pill-enable-input', 'config-pill-whitelist');
-
-    // --- MASTER SWITCH FADING logic ---
+    // 3. Master Switch States (Fading & Disabling entire sections)
     if (currentSettings) {
         applyMasterState('hardlock-config-view', currentSettings.masterHardLock !== false, 'hardlock-disabled-banner');
         applyMasterState('pause-view', currentSettings.masterPause !== false, 'pause-disabled-banner');
         applyMasterState('reminders-view', currentSettings.masterReminders !== false, 'reminders-disabled-banner');
 
-        // Dynamic Status Text
         updateMasterStatusText('hardlock-status-text', currentSettings.masterHardLock !== false, 'strict lock');
         updateMasterStatusText('pause-status-text', currentSettings.masterPause !== false, 'pause');
         updateMasterStatusText('reminders-status-text', currentSettings.masterReminders !== false, 'reminders');
     }
 
-    // GLOBAL SETTINGS LOCK ENFORCEMENT REMOVED - Standard UI update follows
-    if (true) {
-        document.body.style.border = "none";
-        const allInputs = document.querySelectorAll('.popup-container input, .popup-container select, .popup-container button');
-        allInputs.forEach(el => {
-            // Skip re-enabling if we are in a master-disabled view
-            const view = el.closest('.view');
-            if (view) {
-                const isMasterDisabled = (view.id === 'hardlock-config-view' && currentSettings.masterHardLock === false) ||
-                    (view.id === 'pause-view' && currentSettings.masterPause === false) ||
-                    (view.id === 'reminders-view' && currentSettings.masterReminders === false);
-                if (isMasterDisabled) return; // Keep disabled as previously set by applyMasterState
-            }
-
-            el.style.opacity = '';
-            el.style.pointerEvents = '';
-            el.disabled = false;
-        });
-
-        // Re-run standard logic to ensure correct disabled states
-        toggleSub('proto-typing-enable', 'config-typing');
-        toggleSub('proto-password-enable', 'config-password');
-        toggleSub('proto-delay-enable', 'config-delay');
-        toggleSub('proto-godmode-enable', 'config-godmode');
-        toggleSub('proto-passive-enable', 'config-passive');
-        toggleSub('trigger-session-enable', 'config-trigger-session');
-        toggleSub('trigger-browser-enable', 'config-browser-limit');
-        toggleSub('trigger-launch-enable', 'config-launch-limit');
-        toggleSub('pause-trigger-launch-enable', 'config-pause-trigger-launch');
-        toggleSub('pause-trigger-browser-enable', 'config-pause-trigger-browser');
-        toggleSub('reminder-trigger-browser-enable', 'config-reminder-trigger-browser');
-        toggleSub('reminder-trigger-launch-enable', 'config-reminder-trigger-launch');
-    }
-
-    // --- REAL-TIME SAVE VALIDATION (FINAL OVERRIDE) ---
+    // 4. Validation (Final Override for Strict Lock)
     const v = validateSettings();
     const hlSaveBtn = document.getElementById('save-difficulty-btn');
     const hlView = document.getElementById('hardlock-config-view');
     const hlScrollable = hlView?.querySelector('.scrollable-content');
-
-    // Filter for errors that are specific to the Strict Lock view
+    const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked;
     const hlErrors = v.errors.filter(e => e.includes('Strict Lock Error'));
 
-    if (hlSaveBtn) {
+    if (hlSaveBtn && isHLMasterOn) {
         if (hlErrors.length > 0) {
             hlSaveBtn.disabled = true;
             hlSaveBtn.style.opacity = '0.35';
@@ -1538,7 +1478,6 @@ function updateUIState() {
                 hlScrollable.style.filter = 'grayscale(0.5)';
             }
         } else {
-            // Ensure button is re-enabled if no HL errors exist
             hlSaveBtn.disabled = false;
             hlSaveBtn.style.opacity = '1';
             hlSaveBtn.style.filter = 'none';
@@ -1549,10 +1488,12 @@ function updateUIState() {
                 hlScrollable.style.opacity = '1';
                 hlScrollable.style.filter = 'none';
             }
-            
-            // Clear warning if no HL errors (other non-HL errors might exist but we'll hide the generic warning here)
             hideValidationWarning();
         }
+    } else {
+        // Master is OFF or no btn: Ensure no warning hangs around
+        // Note: applyMasterState already handled the fading/disabling when OFF
+        hideValidationWarning();
     }
 }
 
@@ -1581,12 +1522,11 @@ function applyMasterState(containerId, isEnabled, bannerId) {
 
     if (!isEnabled) {
         if (scrollable) {
-            scrollable.style.opacity = '0.5';
+            scrollable.style.opacity = '0.35';
             scrollable.style.filter = 'grayscale(1)';
-            scrollable.style.pointerEvents = ''; // Ensure scrolling works
+            scrollable.style.pointerEvents = 'none'; // Block interaction when master is OFF
         }
         if (banner) {
-            // No longer hiding the banner, it's the control row now
             banner.classList.add('is-disabled');
         }
 
@@ -1595,13 +1535,14 @@ function applyMasterState(containerId, isEnabled, bannerId) {
         inputs.forEach(el => {
             if (el.classList.contains('nav-back') || el.id.startsWith('inner-master-')) return;
             el.disabled = true;
-            el.style.opacity = '0.5';
+            el.style.opacity = '0.35';
+            el.style.pointerEvents = 'none';
         });
     } else {
         if (scrollable) {
             scrollable.style.opacity = '1';
             scrollable.style.filter = 'none';
-            scrollable.style.pointerEvents = '';
+            scrollable.style.pointerEvents = 'auto';
         }
         if (banner) {
             banner.classList.remove('is-disabled');
