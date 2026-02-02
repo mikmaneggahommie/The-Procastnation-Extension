@@ -1411,7 +1411,19 @@ function setupNewViewListeners() {
 // --- GLOBAL UI FUNCTIONS ---
 
 function updateUIState() {
-    // 1. Feature Sub-Configs (Triggers & Protocols)
+    // 1. Master Switch States (Fading & Disabling entire sections)
+    // Runs first so that sub-config toggling can refine the enabled/disabled state
+    if (currentSettings) {
+        applyMasterState('hardlock-config-view', currentSettings.masterHardLock !== false, 'hardlock-disabled-banner');
+        applyMasterState('pause-view', currentSettings.masterPause !== false, 'pause-disabled-banner');
+        applyMasterState('reminders-view', currentSettings.masterReminders !== false, 'reminders-disabled-banner');
+
+        updateMasterStatusText('hardlock-status-text', currentSettings.masterHardLock !== false, 'strict lock');
+        updateMasterStatusText('pause-status-text', currentSettings.masterPause !== false, 'pause');
+        updateMasterStatusText('reminders-status-text', currentSettings.masterReminders !== false, 'reminders');
+    }
+
+    // 2. Feature Sub-Configs (Triggers & Protocols)
     toggleSub('proto-typing-enable', 'config-typing');
     toggleSub('proto-password-enable', 'config-password');
     toggleSub('proto-delay-enable', 'config-delay');
@@ -1426,7 +1438,7 @@ function updateUIState() {
     toggleSub('reminder-trigger-launch-enable', 'config-reminder-trigger-launch');
     toggleSub('pill-enable-input', 'config-pill-whitelist');
 
-    // 2. Specialized Logic (None Mode, Rewards, Typing)
+    // 3. Specialized Logic (None Mode, Rewards, Typing)
     const noneMode = document.getElementById('proto-godmode-enable')?.checked;
     if (noneMode) {
         forceDisable('proto-typing-enable', true);
@@ -1443,17 +1455,6 @@ function updateUIState() {
         rewardContainer.style.display = noneMode ? 'none' : 'block';
     }
     updateTypingEffectiveness();
-
-    // 3. Master Switch States (Fading & Disabling entire sections)
-    if (currentSettings) {
-        applyMasterState('hardlock-config-view', currentSettings.masterHardLock !== false, 'hardlock-disabled-banner');
-        applyMasterState('pause-view', currentSettings.masterPause !== false, 'pause-disabled-banner');
-        applyMasterState('reminders-view', currentSettings.masterReminders !== false, 'reminders-disabled-banner');
-
-        updateMasterStatusText('hardlock-status-text', currentSettings.masterHardLock !== false, 'strict lock');
-        updateMasterStatusText('pause-status-text', currentSettings.masterPause !== false, 'pause');
-        updateMasterStatusText('reminders-status-text', currentSettings.masterReminders !== false, 'reminders');
-    }
 
     // 4. Validation (Final Override for Strict Lock)
     const v = validateSettings();
@@ -1524,13 +1525,13 @@ function applyMasterState(containerId, isEnabled, bannerId) {
         if (scrollable) {
             scrollable.style.opacity = '0.35';
             scrollable.style.filter = 'grayscale(1)';
-            scrollable.style.pointerEvents = 'none'; // Block interaction when master is OFF
+            scrollable.style.pointerEvents = 'none';
         }
         if (banner) {
             banner.classList.add('is-disabled');
         }
 
-        // STRICT DISABLE: Disable all interactive elements in this view
+        // Disable all interactive elements EXCEPT the master switch itself
         const inputs = view.querySelectorAll('input, select, button');
         inputs.forEach(el => {
             if (el.classList.contains('nav-back') || el.id.startsWith('inner-master-')) return;
@@ -1542,18 +1543,29 @@ function applyMasterState(containerId, isEnabled, bannerId) {
         if (scrollable) {
             scrollable.style.opacity = '1';
             scrollable.style.filter = 'none';
-            scrollable.style.pointerEvents = 'auto';
+            scrollable.style.pointerEvents = 'auto'; // Re-enable pointer events
         }
         if (banner) {
             banner.classList.remove('is-disabled');
         }
 
-        // Re-enable footer buttons at least
+        // RE-ENABLE logic: Bring everything back to a base state
+        // toggleSub will then refine this by disabling specific sub-configs
+        const inputs = view.querySelectorAll('input, select, button');
+        inputs.forEach(el => {
+            el.disabled = false;
+            el.style.opacity = '';
+            el.style.filter = '';
+            el.style.pointerEvents = '';
+        });
+
+        // Re-enable footer buttons specifically just in case
         if (footer) {
             const btns = footer.querySelectorAll('button');
             btns.forEach(b => {
                 b.disabled = false;
                 b.style.opacity = '1';
+                b.style.pointerEvents = 'auto';
             });
         }
     }
