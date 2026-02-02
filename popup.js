@@ -175,8 +175,11 @@ function validateSettings() {
             if (isEditing) {
                 if (!newVal) errors.push('<strong>Password Error:</strong> New password cannot be empty.');
                 if (newVal !== confirmVal) errors.push('<strong>Password Error:</strong> New passwords do not match.');
-            } else if (!hasStored) {
-                errors.push('<strong>Password Error:</strong> No password set. Click "Update Password" to create one.');
+            } else {
+                // Not editing (Active State): Must have EITHER stored value OR un-saved input buffer
+                if (!hasStored && !newVal) {
+                    errors.push('<strong>Password Error:</strong> No password set. Click "Update Password" to create one.');
+                }
             }
         }
     }
