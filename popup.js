@@ -797,8 +797,15 @@ function setupListeners() {
                 // and then they can click the main "Save Settings" button.
                 hideValidationWarning();
                 
-                // CRITICAL: Re-run validation to unblock the Save button
-                updateUIState();
+                // SURGICAL: Re-enable the Save button directly (avoid full updateUIState side effects)
+                const hlSaveBtn = document.getElementById('save-difficulty-btn');
+                if (hlSaveBtn) {
+                    hlSaveBtn.disabled = false;
+                    hlSaveBtn.style.opacity = '1';
+                    hlSaveBtn.style.filter = 'none';
+                    hlSaveBtn.style.cursor = 'pointer';
+                    hlSaveBtn.style.pointerEvents = 'auto';
+                }
             };
         }
     }
