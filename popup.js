@@ -114,24 +114,24 @@ function validateSettings() {
     const browserLimitSeconds = getConvertedVal('browser-limit-input', 'browser-limit-unit');
     const browserWindowSeconds = parseInt(document.getElementById('browser-limit-window').value) || 86400;
 
-    // VALIDATION RULE 1: Limit cannot strictly exceed window (Deadlock)
+    // VALIDATION RULE 1: Limit cannot equal or exceed window (Deadlock)
     if (sessionEnabled && windowSeconds > 0) {
-        if (limitSeconds > windowSeconds) {
+        if (limitSeconds >= windowSeconds) {
             const limitStr = formatTime(limitSeconds);
             const windowStr = formatWindow(windowSeconds);
             errors.push({
-                message: `Limit (${limitStr}) cannot be greater than the window (${windowStr}). This creates a deadlock.`,
+                message: `Limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}). This creates a deadlock.`,
                 elementId: 'hardlock-input'
             });
         }
     }
 
     if (browserEnabled && browserWindowSeconds > 0) {
-        if (browserLimitSeconds > browserWindowSeconds) {
+        if (browserLimitSeconds >= browserWindowSeconds) {
             const limitStr = formatTime(browserLimitSeconds);
             const windowStr = formatWindow(browserWindowSeconds);
             errors.push({
-                message: `Browser limit (${limitStr}) cannot be greater than the window (${windowStr}).`,
+                message: `Browser limit (${limitStr}) cannot be equal to or greater than the window (${windowStr}).`,
                 elementId: 'browser-limit-input'
             });
         }
@@ -1017,8 +1017,9 @@ function setupListeners() {
 
             if (validation.warnings.length > 0) {
                 // Show warnings but allow save
-                showValidationWarning(validation.warnings.join('<br>'));
-            } else {
+                showValidationWarning(validation.warnings[0].message);
+            }
+ else {
                 hideValidationWarning();
             }
 
@@ -1529,7 +1530,7 @@ function updateUIState() {
             hlSaveBtn.style.cursor = 'not-allowed';
             hlSaveBtn.style.pointerEvents = 'none';
             
-            showValidationWarning(v.errors[0].message);
+            showValidationWarning(v.errors[0].message, true);
 
             // SURGICAL: Highlight only the cards with errors
             v.errors.forEach(err => {
