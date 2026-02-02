@@ -228,19 +228,24 @@ function formatWindow(seconds) {
 function showValidationWarning(message, isError = false) {
     const banner = document.getElementById('validation-warning');
     const text = document.getElementById('validation-warning-text');
+    const title = banner?.querySelector('.validation-warning-title');
+    const icon = banner?.querySelector('.validation-warning-icon');
+
     if (banner && text) {
         text.innerHTML = message;
         banner.style.display = 'block';
 
-        // Apply different colors for errors vs warnings
-        if (message.includes('Invalid') || message.includes('Cannot') || message.includes('Error')) {
-            banner.style.background = '#F8D7DA';
-            banner.style.border = '1px solid #F5C6CB';
-            banner.style.color = '#721C24';
+        // Explicitly check for error keywords in message OR isError flag
+        const isActuallyError = isError || message.includes('Invalid') || message.includes('Cannot') || message.includes('Error');
+
+        if (isActuallyError) {
+            banner.className = 'validation-warning is-error';
+            if (title) title.textContent = 'Configuration Error';
+            if (icon) icon.textContent = '🛑';
         } else {
-            banner.style.background = '#FFF3CD';
-            banner.style.border = '1px solid #FFE69C';
-            banner.style.color = '#856404';
+            banner.className = 'validation-warning is-warning';
+            if (title) title.textContent = 'Configuration Warning';
+            if (icon) icon.textContent = '⚠️';
         }
     }
 }
