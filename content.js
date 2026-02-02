@@ -2848,7 +2848,13 @@ class CureVault {
                     </div>
                 </div>
                 
-                <p style="color:#86868B; font-size:13px;">Use this time to reconsider your choices.</p>
+                <div style="margin-top: 20px; width: 100%; max-width: 300px; margin-left: auto; margin-right: auto;">
+                    <button id="cure-delay-give-up" class="cure-btn-unlock cure-anim-pulse-black" style="background:#1d1d1f; border: none; color:#ffffff; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-weight:600;">
+                        I'd rather be productive
+                    </button>
+                </div>
+
+                <p style="color:#86868B; font-size:13px; margin-top: 16px;">Use this time to reconsider your choices.</p>
             </div>
         `;
 
@@ -2857,6 +2863,14 @@ class CureVault {
         
         const timerEl = this.shadowRoot.getElementById('cure-delay-timer');
         const ringEl = this.shadowRoot.getElementById('cure-timer-ring');
+        const giveUpBtn = this.shadowRoot.getElementById('cure-delay-give-up');
+
+        if (giveUpBtn) {
+            giveUpBtn.onclick = () => {
+                if (this.delayInterval) clearInterval(this.delayInterval);
+                this.renderDecisionScreen(this.settings.hardLockDuration || 30);
+            };
+        }
 
         this.delayInterval = setInterval(() => {
             const diff = targetTime - Date.now();
@@ -2902,13 +2916,17 @@ class CureVault {
                 <div style="width:100%; max-width:300px; margin-top:30px;">
                     <div class="cure-pass-container">
                         <input type="password" id="cure-pass-input" class="cure-typing-input" placeholder="Enter password..." style="height:56px; text-align:center; font-size:18px; padding-right: 50px;">
-                        <button id="cure-pass-toggle" class="cure-pass-toggle" type="button" title="Show/Hide Password">👁️</button>
+                        <button id="cure-pass-toggle" class="cure-pass-toggle" type="button" title="Show/Hide Password" style="color: #1d1d1f; opacity: 0.6;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 4.5C7 4.5 2.73 7.61 1 12C2.73 16.39 7 19.5 12 19.5C17 19.5 21.27 16.39 23 12C21.27 7.61 17 4.5 12 4.5ZM12 17C9.24 17 7 14.76 7 12C7 9.24 9.24 7 12 7C14.76 7 17 9.24 17 12C17 14.76 14.76 17 12 17ZM12 9C10.34 9 9 10.34 9 12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12C15 10.34 13.66 9 12 9Z" fill="currentColor"/>
+                            </svg>
+                        </button>
                     </div>
                     <div id="cure-pass-error" style="color:#FF3B30; margin-top:12px; opacity:0; font-size:14px; font-weight:600; text-align:center;">
                         Incorrect Password
                     </div>
-                    <button id="cure-pass-submit" class="cure-btn-unlock" style="margin-top:16px; width:100%;">
-                        Unlock
+                    <button id="cure-pass-submit" class="cure-btn-unlock cure-anim-pulse-black" style="margin-top:16px; width:100%; background:#1d1d1f; border-radius: 12px; font-weight: 600;">
+                        I'd rather be productive
                     </button>
                 </div>
                 
@@ -2930,44 +2948,98 @@ class CureVault {
             toggle.onclick = () => {
                 const isPass = input.type === 'password';
                 input.type = isPass ? 'text' : 'password';
-                toggle.textContent = isPass ? '🔒' : '👁️';
+                // Update Icon
+                if (isPass) {
+                    // Show "Hide" icon (Slash)
+                    toggle.innerHTML = `
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11.83 9L15 12.17V12C15 10.34 13.66 9 12 9H11.83ZM19.78 22.61L1.39 4.22L2.8 2.81L19.64 19.65L21.2 21.2L19.78 22.61ZM2.04 4.89C0.97 7 0.5 9.25 1 12C2.73 16.39 7 19.5 12 19.5C13.55 19.5 15.03 19.2 16.38 18.66L14.81 17.09C13.97 17.36 13.04 17.5 12 17.5C9.24 17.5 7 15.26 7 12.5C7 11.46 7.37 10.5 8.01 9.74L2.04 4.89ZM7.53 9.8L9.08 11.35C9.03 11.72 9 12.1 9 12.5C9 14.16 10.34 15.5 12 15.5C12.4 15.5 12.78 15.47 13.15 15.42L14.7 16.97C13.94 17.61 12.98 18 12 17.92C12.03 17.92 12.07 17.92 12.1 17.92L7.53 9.8ZM11.84 9.09L14.28 11.53L14.91 12.16L17.76 15.01C19.79 12.44 21.4 9.4 23 12C21.27 7.61 17 4.5 12 4.5C10.15 4.5 8.44 5.08 6.95 6.06L9.2 8.31C9.69 7.42 10.66 6.8 11.84 6.8V9.09Z" fill="currentColor"/>
+                        </svg>
+                    `;
+                } else {
+                    // Show "Show" icon (Eye)
+                    toggle.innerHTML = `
+                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 4.5C7 4.5 2.73 7.61 1 12C2.73 16.39 7 19.5 12 19.5C17 19.5 21.27 16.39 23 12C21.27 7.61 17 4.5 12 4.5ZM12 17C9.24 17 7 14.76 7 12C7 9.24 9.24 7 12 7C14.76 7 17 9.24 17 12C17 14.76 14.76 17 12 17ZM12 9C10.34 9 9 10.34 9 12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12C15 10.34 13.66 9 12 9Z" fill="currentColor"/>
+                        </svg>
+                    `;
+                }
             };
         }
 
         let passResolved = false;
-        const check = () => {
-            if (passResolved) return;
+
+        // Validation Function
+        const validate = (fromInput = false) => {
+            if (passResolved) return; // Already done
+
             if (input.value === correctPassword) {
                 passResolved = true;
+                
+                // Success Effects
                 input.disabled = true;
                 input.blur();
                 try { SoundEngine.playChime('success'); } catch (e) { }
                 if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
                 submit.textContent = "I’m giving in. Unlock.";
-                submit.classList.remove('cure-anim-pulse-black'); // In case it was pulsing
+                submit.classList.remove('cure-anim-pulse-black'); 
                 submit.style.background = "transparent";
                 submit.style.color = "#86868B";
                 submit.style.border = "2px solid #E5E5EA";
                 submit.style.fontWeight = "600";
                 submit.style.boxShadow = "none";
                 
+                // Re-bind click to unlock
                 submit.onclick = () => {
                     this.tempPasswordComplete = true;
                     this.renderHardLock(overlay);
                 };
             } else {
-                err.style.opacity = '1';
-                input.classList.add('shake'); // Use the 'shake' class already in css
-                setTimeout(() => input.classList.remove('shake'), 400);
+                // Only show error on explicit submission (Enter key), not just typing
+                if (!fromInput) {
+                     err.style.opacity = '1';
+                     input.classList.add('shake');
+                     setTimeout(() => input.classList.remove('shake'), 400);
+                }
             }
         };
 
-        submit.onclick = check;
-        input.onkeydown = (e) => {
-            e.stopPropagation(); // Prevent site hotkeys (like Space) from interfering
-            if (e.key === 'Enter') check();
+        // Real-time detection
+        input.oninput = () => {
+            if (input.value === correctPassword) {
+                validate(true);
+            }
         };
+
+        input.onkeydown = (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+                if (input.value === correctPassword) {
+                    validate(); 
+                    // If they hit enter and it's correct, we can either:
+                    // 1. Just transform button (matches "don't automatically open")
+                    // 2. Or unlock immediately. 
+                    // Given the user's specific request "change the button and when they click it it unlock",
+                    // we'll just focus the button so they can hit Enter again or click it.
+                    submit.focus();
+                } else {
+                    validate(); // Shows error shake
+                }
+            }
+        };
+
+        // Initial Button State: "I'd rather be productive" -> Go Back
+        submit.onclick = () => {
+             if (passResolved) {
+                 // Should have been rebound, but just in case
+                 this.tempPasswordComplete = true;
+                 this.renderHardLock(overlay);
+             } else {
+                 this.renderDecisionScreen(this.settings.hardLockDuration || 30);
+             }
+        };
+        
         input.focus();
     }
 

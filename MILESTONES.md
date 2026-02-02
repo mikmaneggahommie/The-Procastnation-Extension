@@ -11,6 +11,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
+| Feb 2, 2026  | **Fix: Password UI & Logic**         | HEAD          | Unified UI (Pulse/Icons) & Logic Fix (Infinite Loop / Unlock State).                       |
 | Feb 2, 2026  | **Fix: Default Password Bug**        | `3144e56`     | Removed "1234" default; fixed "Active" state on clean install.                             |
 | Feb 2, 2026  | **Fix: Password Redesign**           | `e08c960`     | State-aware architecture Overhaul; premium UI card & in-situ warnings.                     |
 | Feb 2, 2026  | **Fix: Password Refinement**         | `8710562`     | Mandatory old password check; dynamic "Update" vs "Create" UI polish.                      |
