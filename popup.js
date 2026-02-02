@@ -846,9 +846,11 @@ function setupListeners() {
     const validationInputs = [
         'hardlock-input', 'hardlock-unit', 'session-reset-window',
         'browser-limit-input', 'browser-limit-unit', 'browser-limit-window',
+        'launch-limit-input', 'launch-limit-window',
         'unlock-reward-input', 'unlock-reward-unit',
-        'trigger-session-enable', 'trigger-browser-enable',
-        'passive-reward-val', 'passive-reward-unit', 'passive-work-val', 'passive-work-unit', 'proto-passive-enable'
+        'trigger-session-enable', 'trigger-browser-enable', 'trigger-launch-enable',
+        'proto-typing-enable', 'proto-password-enable', 'proto-delay-enable', 'proto-passive-enable', 'proto-godmode-enable',
+        'passive-reward-val', 'passive-reward-unit', 'passive-work-val', 'passive-work-unit'
     ];
 
     validationInputs.forEach(id => {
@@ -1493,17 +1495,16 @@ function updateUIState() {
     const hlView = document.getElementById('hardlock-config-view');
     const hlScrollable = hlView?.querySelector('.scrollable-content');
     const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked;
-    const hlErrors = v.errors.filter(e => e.includes('Strict Lock Error'));
 
     if (hlSaveBtn && isHLMasterOn) {
-        if (hlErrors.length > 0) {
+        if (v.errors.length > 0) {
             hlSaveBtn.disabled = true;
             hlSaveBtn.style.opacity = '0.35';
             hlSaveBtn.style.filter = 'grayscale(1)';
             hlSaveBtn.style.cursor = 'not-allowed';
             hlSaveBtn.style.pointerEvents = 'none';
             
-            showValidationWarning(hlErrors[0]);
+            showValidationWarning(v.errors[0]);
 
             if (hlScrollable) {
                 hlScrollable.style.opacity = '0.6';
