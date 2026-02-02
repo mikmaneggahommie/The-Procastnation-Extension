@@ -819,6 +819,14 @@ select.clean-input:focus {
   justify-content: center;
 }
 
+/* PROGRESSIVE DISCLOSURE: Confirm Password button starts faded until valid */
+#generate-password-btn {
+  opacity: 0.35;
+  filter: grayscale(1);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .danger-btn {
   background: #ff3b30;
   padding: 6px 12px;
