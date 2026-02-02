@@ -108,7 +108,7 @@ const DEFAULT_SETTINGS = {
     showPillOnWhitelist: true,
     unlockProtocols: {
         typing: { enabled: true, difficulty: 50 }, // Difficulty is now in Words
-        password: { enabled: false, value: "1234" },
+        password: { enabled: false, value: "" },
         delay: { enabled: false, duration: 5 },
         godMode: false
     },
