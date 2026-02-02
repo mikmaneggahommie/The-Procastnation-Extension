@@ -4,8 +4,8 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 ### 📅 Current Golden State: Feb 2, 2026
 
-**Commit:** `5fcc179`
-**Status:** HIGH VISIBILITY VALIDATION. Moved validation warnings outside of the faded scrollable area. Standardized warning styles in `styles.css` with forced opacity for maximum legibility. Fixed master switch interaction and input re-enablement logic.
+**Commit:** `[LATEST]`
+**Status:** PASSWORD WORKFLOW REFINEMENT. Implemented mandatory current-password verification for updates. Dynamically shifted UI placeholders and labels ("Create" vs "Update"). Added "Show Passwords" support for all verification fields.
 
 ---
 
@@ -13,7 +13,8 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
-| Feb 2, 2026  | **Fix: High Visibility Validation**  | `38d1246`     | Moved error warnings out of faded area; forced 100% opacity for legibility.                |
+| Feb 2, 2026  | **Fix: Password Refinement**         | `[LATEST]`    | Mandatory old password check; dynamic "Update" vs "Create" UI polish.                      |
+| Feb 2, 2026  | **Fix: High Visibility Validation**  | `5fcc179`     | Moved error warnings out of faded area; forced 100% opacity for legibility.                |
 | Feb 2, 2026  | **Fix: Failsafe UI State**           | `e27a334`     | Fixed unclickable master switch and input re-enable logic.                                 |
 | Feb 1, 2026  | **Feat: Punchy Guilt Refine**        | `a35e144`     | Shortened text to "I'm giving in. Unlock." for visceral impact.                            |
 | Feb 1, 2026  | **Feat: Psychological Polish**       | `5de6e38`     | Added Productivity Pulse & First-Person Guilt ("I choose...").                             |
