@@ -80,3 +80,4 @@ This feature is highly sensitive to the browser's rendering lifecycle. It has br
 2.  **Width Consistency**: Max-width is locked at `280px` for a "lesser" compact feel.
 3.  **Backdrop**: Uses `backdrop-filter: blur(4px)` for a premium feel.
 4.  **Shared Classes**: Uses `.cure-modal-card` and `.cure-modal-overlay`. Do NOT revert to inline styles or unique classes for `none-confirm` or `help-modal`.
+5.  **Reactive Save Button**: The "Save Settings" button must reflect the current state of password setup. It must be faded SILENTLY (without error banner) if `password-setup-state` is visible or if no password is set while Protocol is ON. It is NOT restricted if the Password Protocol is toggled OFF.

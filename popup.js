@@ -168,16 +168,9 @@ function validateSettings() {
         // 3. Password Integrity Check (State-Aware)
         // NOTE: During EDITING, we no longer show errors here - the Confirm button handles progressive disclosure
         // We only block if password is enabled but NO password exists (neither stored nor in buffer)
-        if (passOn) {
-            const hasStored = !!(currentSettings?.unlockProtocols?.password?.value);
-            const isEditing = document.getElementById('password-setup-state')?.style.display !== 'none';
-            const newVal = document.getElementById('proto-password-val')?.value;
+        // NOTE: Password integrity is now handled SILENTLY in updateUIState to avoid intrusive banners
+        // while the user is simply navigating the setup UI.
 
-            // Only show error if NOT editing AND no stored password AND no buffer value
-            if (!isEditing && !hasStored && !newVal) {
-                errors.push('<strong>Password Error:</strong> No password set. Click "Update Password" to create one.');
-            }
-        }
     }
 
     // --- DOCTOR STRANGE HEURISTICS (Toxic Configs) ---
@@ -818,15 +811,8 @@ function setupListeners() {
                 // and then they can click the main "Save Settings" button.
                 hideValidationWarning();
                 
-                // SURGICAL: Re-enable the Save button directly (avoid full updateUIState side effects)
-                const hlSaveBtn = document.getElementById('save-difficulty-btn');
-                if (hlSaveBtn) {
-                    hlSaveBtn.disabled = false;
-                    hlSaveBtn.style.opacity = '1';
-                    hlSaveBtn.style.filter = 'none';
-                    hlSaveBtn.style.cursor = 'pointer';
-                    hlSaveBtn.style.pointerEvents = 'auto';
-                }
+                // Trigger full UI update to re-check all validation rules
+                updateUIState();
             };
         }
     }
@@ -1153,6 +1139,9 @@ function setupListeners() {
                 confirmBtn.style.cursor = 'not-allowed';
                 confirmBtn.style.pointerEvents = 'none';
             }
+
+            // Trigger full UI update to fade the "Save Settings" button
+            updateUIState();
         };
     }
 
@@ -1160,6 +1149,7 @@ function setupListeners() {
         cancelBtn.onclick = () => {
             if (setupState) setupState.style.display = 'none';
             if (activeState) activeState.style.display = 'block';
+            updateUIState();
         };
     }
 
@@ -1546,15 +1536,26 @@ function updateUIState() {
     const hlSaveBtn = document.getElementById('save-difficulty-btn');
     const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked;
 
+    // SILENT PASSWORD CHECK: Disable Save if password is ON but incomplete/editing
+    const passOn = document.getElementById('proto-password-enable')?.checked;
+    const isPasswordEditing = document.getElementById('password-setup-state')?.style.display !== 'none';
+    const hasPassword = !!(currentSettings?.unlockProtocols?.password?.value);
+    const passIncomplete = passOn && (isPasswordEditing || !hasPassword);
+
     if (hlSaveBtn && isHLMasterOn) {
-        if (v.errors.length > 0) {
+        if (v.errors.length > 0 || passIncomplete) {
             hlSaveBtn.disabled = true;
             hlSaveBtn.style.opacity = '0.35';
             hlSaveBtn.style.filter = 'grayscale(1)';
             hlSaveBtn.style.cursor = 'not-allowed';
             hlSaveBtn.style.pointerEvents = 'none';
             
-            showValidationWarning(v.errors[0], true);
+            // Only show banner for non-password errors
+            if (v.errors.length > 0) {
+                showValidationWarning(v.errors[0], true);
+            } else {
+                hideValidationWarning();
+            }
         } else {
             hlSaveBtn.disabled = false;
             hlSaveBtn.style.opacity = '1';

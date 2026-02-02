@@ -11,7 +11,8 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                |
 | :----------- | :----------------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
-| Feb 2, 2026  | **Feat: Unified Modal System**       | HEAD          | Standardized .cure-modal system with centered, consistent width (280px).                   |
+| Feb 2, 2026  | **Feat: Save Button Reactive State** | HEAD          | Fades "Save Settings" button if Password is ON and in Edit Mode.                           |
+| Feb 2, 2026  | **Feat: Unified Modal System**       | `011b22a`     | Standardized .cure-modal system with centered, consistent width (280px).                   |
 | Feb 2, 2026  | **Fix: Password UI & Logic**         | HEAD          | Unified UI (Pulse/Icons) & Logic Fix (Infinite Loop / Unlock State).                       |
 | Feb 2, 2026  | **Fix: Default Password Bug**        | `3144e56`     | Removed "1234" default; fixed "Active" state on clean install.                             |
 | Feb 2, 2026  | **Fix: Password Redesign**           | `e08c960`     | State-aware architecture Overhaul; premium UI card & in-situ warnings.                     |
