@@ -225,6 +225,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             // Track this challenge extension-wide
             chrome.storage.session.set({ [`cure_challenge_active_${tabId}`]: hostname });
             
+            // ANTI-CHEAT: Snapshot rules NOW. 
+            // The site is now stuck with these until the challenge is finished.
+            const cleanHost = hostname.replace(/^www\./, '');
+            if (!g_lockSnapshots[cleanHost]) {
+                g_lockSnapshots[cleanHost] = JSON.parse(JSON.stringify(g_settingsCache || DEFAULT_SETTINGS));
+                saveSnapshots();
+            }
+
             // 🛑 CRITICAL / LOCKED FEATURE 🛑
             // DO NOT CHANGE THIS LOGIC. SEE LOCKED_FEATURES.md
             // PESSIMISTIC LOCKING: We set the reset flag NOW.
@@ -586,9 +594,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     if (tab.id && tab.url) {
                         try {
                             const url = new URL(tab.url);
-                            const hostname = url.hostname.replace(/^www\./, '');
+                            const tabHost = url.hostname.replace(/^www\./, '');
                             // AUTHORITATIVE BROADCAST: Send tab-specific frozen settings if locked.
-                            const finalSettings = g_lockSnapshots[hostname] || newSettings;
+                            const finalSettings = g_lockSnapshots[tabHost] || newSettings;
                             chrome.tabs.sendMessage(tab.id, {
                                 action: 'settingsUpdated',
                                 settings: finalSettings
@@ -679,11 +687,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         };
 
         const cleanHost = hostname.replace(/^www\./, '');
-        // ANTI-CHEAT: Snapshot rules NOW. This site is stuck with these until payment.
-        if (!g_lockSnapshots[cleanHost]) {
-            g_lockSnapshots[cleanHost] = JSON.parse(JSON.stringify(g_settingsCache || DEFAULT_SETTINGS));
-            saveSnapshots();
-        }
+        // REMOVED: snapshotting here. 
+        // We now snapshot only in 'challengeStarted' to allow reactive whitelisting 
+        // while on the Decision ("Time's Up") screen.
 
         chrome.storage.local.set({ [key]: lockState }, () => {
             sendResponse({ success: true, lockState });
@@ -871,7 +877,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             updates['passiveData'] = passiveData;
 
             // ANTI-CHEAT: Debt Paid. Clear the snapshot.
-            delete g_lockSnapshots[hostname];
+            const cleanHost = hostname.replace(/^www\./, '');
+            delete g_lockSnapshots[cleanHost];
             saveSnapshots();
 
             chrome.storage.local.set(updates, () => {
@@ -906,7 +913,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const key = `lock_${hostname}`;
         
         // Anti-Cheat: Also clear snapshot if explicitly cleared
-        delete g_lockSnapshots[hostname];
+        const cleanHost = hostname.replace(/^www\./, '');
+        delete g_lockSnapshots[cleanHost];
         saveSnapshots();
 
         chrome.storage.local.remove(key, () => {

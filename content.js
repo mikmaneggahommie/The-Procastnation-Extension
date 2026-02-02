@@ -665,6 +665,13 @@ class CureVault {
                         setTimeout(() => input.focus(), 50);
                     }
                 }
+
+                // FIX: Immediate Overlay Removal
+                // If it's no longer blacklisted and we were showing a block overlay, kill it.
+                if (newWhitelisted || !newStrictLock) {
+                    this.removeOverlay();
+                    this.updatePill();
+                }
             }
 
             // FIX 118: Clear Sticky Unlock on Strict Lock Enable.
@@ -1348,10 +1355,9 @@ class CureVault {
 
                 if (!cleanSiteNoWww) return false;
 
-                // Match exact, match as subdomain, or match as parent domain
+                // Match exact or as subdomain
                 return currentHostNoWww === cleanSiteNoWww ||
-                    currentHostNoWww.endsWith('.' + cleanSiteNoWww) ||
-                    cleanSiteNoWww.endsWith('.' + currentHostNoWww);
+                    currentHostNoWww.endsWith('.' + cleanSiteNoWww);
             });
         } catch (e) {
             console.error('[Cure] Whitelist check error:', e);
