@@ -796,6 +796,9 @@ function setupListeners() {
                 // We don't save to storage yet, just let the user see "Active" 
                 // and then they can click the main "Save Settings" button.
                 hideValidationWarning();
+                
+                // CRITICAL: Re-run validation to unblock the Save button
+                updateUIState();
             };
         }
     }
