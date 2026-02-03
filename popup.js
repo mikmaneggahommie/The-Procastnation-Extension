@@ -617,7 +617,7 @@ function setupListeners() {
                 }
             });
 
-            saveSettings();
+            // saveSettings(); // REMOVED: No auto-save on masters
             updateUIState();
             
             // Only show indicator for home-screen master toggles
@@ -1021,9 +1021,10 @@ function setupListeners() {
 
             saveSettings();
             showSavedIndicator();
-            // Immediate navigate back for responsive feel
-            const backBtn = document.querySelector('.nav-back');
-            if (backBtn) backBtn.click();
+            // Immediate navigate back to HOME
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById('home-view').classList.add('active');
+            updateUIState();
         });
     }
 
@@ -1041,7 +1042,10 @@ function setupListeners() {
             currentSettings.breathingFreq = document.getElementById('breathing-freq').value;
             saveSettings();
             showSavedIndicator();
-            document.querySelector('.nav-back').click();
+            // Immediate navigate back to HOME
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById('home-view').classList.add('active');
+            updateUIState();
         });
     }
 
@@ -1061,7 +1065,7 @@ function setupListeners() {
 
             if (v && !currentSettings.whitelist.includes(v)) {
                 currentSettings.whitelist.push(v);
-                saveSettings();
+                // saveSettings(); // REMOVED: Buffer changes
                 renderWhitelist();
                 document.getElementById('new-site-input').value = '';
             }
@@ -1079,7 +1083,7 @@ function setupListeners() {
             const u = document.getElementById('new-shortcut-url').value.trim();
             if (n && u) {
                 currentSettings.shortcuts.push({ name: n, url: u });
-                saveSettings();
+                // saveSettings(); // REMOVED: Buffer changes
                 renderShortcuts();
                 document.getElementById('new-shortcut-name').value = '';
                 document.getElementById('new-shortcut-url').value = '';
@@ -1094,7 +1098,7 @@ function setupListeners() {
             if (e.target.dataset.type === 'whitelist') currentSettings.whitelist.splice(idx, 1);
             if (e.target.dataset.type === 'blacklist') currentSettings.blacklist.splice(idx, 1);
             if (e.target.dataset.type === 'shortcut') currentSettings.shortcuts.splice(idx, 1);
-            saveSettings();
+            // saveSettings(); // REMOVED: Buffer changes
             renderAll();
         }
     });
@@ -1413,6 +1417,10 @@ function setupNewViewListeners() {
         document.getElementById(id)?.addEventListener('click', () => {
             saveSettings();
             showSavedIndicator();
+            // Immediate navigate back to HOME
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.getElementById('home-view').classList.add('active');
+            updateUIState();
         });
     });
 

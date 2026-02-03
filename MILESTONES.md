@@ -11,6 +11,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date         | Feature                              | Stable Commit | Description                                                                                                   |
 | :----------- | :----------------------------------- | :------------ | :------------------------------------------------------------------------------------------------------------ |
+| Feb 3, 2026  | **Refinement: Popup Save Flow**      | HEAD          | Buffered settings; auto-navigate home on save; refined compact bottom toast (0.7 opacity).                    |
 | Feb 2, 2026  | **Feat: Silent Reactive Save State** | HEAD          | Silent, buffer-aware fading for "Save Settings" during Password setup.                                        |
 | Feb 2, 2026  | **Fix: Reactive Unlock Logic**       | HEAD          | Restored dynamic whitelist/protocol updates during Decision/Reward phases; fixed hostname normalization leak. |
 | Feb 2, 2026  | **Feat: Unified Modal System**       | `011b22a`     | Standardized .cure-modal system with centered, consistent width (280px).                                      |

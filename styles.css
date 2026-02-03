@@ -1715,25 +1715,25 @@ input[type="number"]::-webkit-outer-spin-button {
 
 #save-status {
   position: fixed;
-  bottom: 25px;
+  bottom: 30px; /* Reverted to bottom, now shown on home screen so no overlap */
   left: 50%;
-  transform: translate(-50%, 0);
-  background: rgba(40, 40, 42, 0.7); /* Slightly darker and more opaque */
+  transform: translate(-50%, 20px);
+  background: rgba(40, 40, 42, 0.7); /* Softer opacity */
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   color: white;
-  padding: 4px 12px;
-  border-radius: 40px; /* Full pill shape */
-  font-size: 12px;
-  font-weight: 500;
+  padding: 4px 12px; /* Smaller padding */
+  border-radius: 40px;
+  font-size: 12px; /* Smaller font */
+  font-weight: 600;
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0.2, 0, 1);
   pointer-events: none;
   z-index: 10001;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 6px; /* Smaller gap */
 }
 
 #save-status.show {
