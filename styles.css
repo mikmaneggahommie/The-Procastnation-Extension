@@ -318,8 +318,11 @@ body {
 .sentence-row .config-number-input {
   text-align: center;
   min-width: 32px;
-  /* Narrower defaults */
   max-width: 60px;
+  padding: 0 4px;
+  height: 24px;
+  border: 1px solid #d1d1d6;
+  font-size: 13px;
 }
 
 .sentence-row .config-number-input:focus,
