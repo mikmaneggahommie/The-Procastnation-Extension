@@ -593,10 +593,7 @@ function renderWhitelist(filter = '') {
     }
 
     if (!items.length) {
-    if (!items.length) {
         list.innerHTML = `<div style="padding:16px;text-align:center;color:#999;font-size:13px;">${filter ? 'No matches' : 'Allowlist is empty'}</div>`;
-        return;
-    }
         return;
     }
     items.forEach((site) => {
@@ -1369,11 +1366,24 @@ function setupListeners() {
     document.body.addEventListener('click', (e) => {
         if (e.target.dataset.type) {
             const idx = parseInt(e.target.dataset.index);
-            if (e.target.dataset.type === 'whitelist') currentSettings.whitelist.splice(idx, 1);
-            if (e.target.dataset.type === 'blacklist') currentSettings.blacklist.splice(idx, 1);
-            if (e.target.dataset.type === 'shortcut') currentSettings.shortcuts.splice(idx, 1);
-            markDirty();
-            renderAll();
+            const type = e.target.dataset.type;
+            
+            if (type === 'whitelist') {
+                currentSettings.whitelist.splice(idx, 1);
+                const filter = document.getElementById('whitelist-search')?.value || '';
+                markDirty();
+                renderWhitelist(filter);
+            } else if (type === 'blacklist') {
+                currentSettings.blacklist.splice(idx, 1);
+                const filter = document.getElementById('blocklist-search')?.value || '';
+                markDirty();
+                renderBlocklist(filter);
+            } else if (type === 'shortcut') {
+                currentSettings.shortcuts.splice(idx, 1);
+                const filter = document.getElementById('shortcuts-search')?.value || '';
+                markDirty();
+                renderShortcuts(filter);
+            }
         }
     });
 
