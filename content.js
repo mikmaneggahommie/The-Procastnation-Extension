@@ -944,7 +944,7 @@ class CureVault {
                      if (currentSysId) {
                          const storedSysId = sessionStorage.getItem('cure_system_instance_id');
                          if (storedSysId && storedSysId !== currentSysId) {
-                             console.warn('[Cure] System Instance changed. Wiping stale storage.');
+                             console.log('[Cure] System Instance changed. Wiping stale storage.');
                              const keys = Object.keys(sessionStorage);
                              keys.forEach(k => {
                                  if (k.startsWith('cure_')) sessionStorage.removeItem(k);
