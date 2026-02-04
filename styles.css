@@ -206,19 +206,14 @@ body {
 }
 
 .item-text {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   flex: 1;
+  min-width: 0; /* Allows flexing below content size if needed */
 }
 
 .item-text h3 {
   font-size: 16px;
   font-weight: 500;
   margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -694,7 +689,7 @@ select.clean-input {
 
 .dropdown-input:focus {
   border-color: var(--accent-color);
-  background-color: #fff;
+  background-color: #f2f2f7;
 }
 
 .unit-selector:hover {
@@ -1762,7 +1757,7 @@ input[type="number"]::-webkit-outer-spin-button {
 .cure-modal-card {
   background: white;
   width: calc(100% - 64px); /* "Lesser" width, more margin */
-  max-width: 280px;         /* "Lesser" max-width */
+  max-width: 280px; /* "Lesser" max-width */
   border-radius: 16px;
   padding: 24px;
   text-align: center;
@@ -1847,13 +1842,23 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes scaleIn {
-  from { transform: scale(0.9); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* --- UNSAVED CHANGES NUDGE (Refined) --- */
@@ -1862,11 +1867,19 @@ input[type="number"]::-webkit-outer-spin-button {
   transition: box-shadow 0.3s ease;
 }
 
-
 @keyframes pulse-save {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.02); opacity: 0.9; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .input-error {

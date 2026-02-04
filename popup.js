@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadSettings();
     renderAll();
     setupListeners();
-    setupNewViewListeners(); // New listeners for Pause/Reminders
+    setupNewViewListeners();
+    setupInputValidation();
 });
 
 async function loadSettings() {
@@ -839,13 +840,38 @@ function setupListeners() {
     const helpModalClose = document.getElementById('help-modal-close');
 
     const helpContent = {
-        'pause-duration': { title: 'Pause Duration', text: 'A mandatory waiting period before you can access a distracting site. This helps break impulsive scrolling habits.', icon: '🧘‍♂️' },
-        'remind-every': { title: 'Reminder Frequency', text: 'How often the extension will show you a "productive check-in" reminding you of your time spent.', icon: '⏳' },
+        'pause-duration': { title: 'Pause Duration', text: 'A mandatory waiting period before you can access a distracting site. Also includes Frequency settings: "Every page load" shows the pause loop on every navigation, while "The first page load only" shows it only when you first enter the site for that browsing session.', icon: '🧘‍♂️' },
+        'pause-launch-trigger': { title: 'Launch Count Trigger', text: 'Automatically triggers the Pause Screen after you visit a site a certain number of times per hour. Great for caching "habitual checks".', icon: '🚀' },
+        'pause-screentime-trigger': { title: 'Screen Time Trigger', text: 'Automatically triggers the Pause Screen after you spend a certain amount of time browsing today.', icon: '⏱️' },
+        'pause-allowlist': { title: 'Enable on Allowlist', text: 'By default, "productive" allowlisted sites skip the pause screen. Turn this on if you want to be paused on those sites too.', icon: '✅' },
+        
+        'reminder-interval': { title: 'Reminder Interval', text: 'How often the extension will show you a "productive check-in" reminding you of your time spent.', icon: '⏳' },
+        'reminder-style': { title: 'Visual Style', text: 'Choose "Overlay" for a full-screen interrupt or "Toast" for a subtle notification at the bottom.', icon: '🎨' },
+        'reminder-screentime-trigger': { title: 'Screen Time Reminder', text: 'Get a specific alert when your total daily browsing time hits this limit.', icon: '🛑' },
+        'reminder-launch-trigger': { title: 'Launch Count Reminder', text: 'Get a specific alert when you visit sites too frequently (e.g. 10 times in an hour).', icon: '🚀' },
+        'reminder-allowlist': { title: 'Enable on Allowlist', text: 'By default, allowlisted sites do not trigger reminders. Turn this on to get reminders even on productive sites.', icon: '✅' },
+
+        // Main Menu Keys
+        'menu-allowlist': { title: 'Allowlist', text: 'Sites listed here are "productive" and safe. They will never be blocked, and won\'t trigger interventions unless you specifically enable them.', icon: '✅' },
+        'menu-blocklist': { title: 'Blocklist', text: 'Sites listed here are considered "distracting" and will be restricted according to your Strict Lock settings.', icon: '⛔' },
+        'menu-shortcuts': { title: 'Shortcuts', text: 'Quick links to your favorite productive sites. Adding a site here makes it easy to access alternatives when you are blocked.', icon: '🚀' },
+        'menu-strict-lock': { title: 'Strict Lock', text: 'The core blocking engine. Configures how hard the blockage is (e.g. typing challenges, time limits) and when it triggers.', icon: '🔒' },
+        'menu-pause': { title: 'Pause', text: 'A "Breathing Room" feature that forces you to pause and think for a few seconds before entering a distracting site.', icon: '🧘‍♂️' },
+        'menu-reminders': { title: 'Reminders', text: 'Gentle nudges that help you stay aware of your time spent on sites without blocking you completely.', icon: '🔔' },
+
+        'session-allowance': { title: 'Launch Count Limit', text: 'Set a strict limit on how many times you can visit this site within a time window (e.g. 3 times per hour).', icon: '🚀' },
+
+        'sound-effects': { title: 'Sound Effects', text: 'Play a sound when a timer finishes or a challenge is failed. Helpful for auditory feedback.', icon: '🔊' },
+        'timer-pill': { title: 'Timer Pill', text: 'A small floating timer that shows you how much time you have left on a site or how long you\'ve been browsing.', icon: '💊' },
+        'pill-allowlist': { title: 'Include Allowlist Sites', text: 'Show the timer pill even on allowed/productive sites, so you can track your time everywhere.', icon: '✅' },
+        'data-backup': { title: 'Data Backup', text: 'Export your settings to a file to save them, or import a previously saved file to restore your configuration.', icon: '💾' },
+        'shortcuts-allowlist': { title: 'Shortcuts Allowlist', text: 'Add sites here to make them permanently "allowed". These sites will never be blocked, and won\'t trigger the pause screen unless you specifically enable that setting.', icon: '✅' },
+        'add-blocklist': { title: 'Add to Blocklist', text: 'Enter a domain (e.g., youtube.com) to block it. You can manage your blocked sites in the list below.', icon: '🚫' },
+
         'session-limit': { title: 'Site Activity Limit', text: 'Max time allowed for this site. You can choose to reset this timer when you leave the site, or set it as a rolling budget (e.g. 20 minutes per hour).', icon: '🔒' },
         'reward-time': { title: 'Unlock Reward', text: 'The number of minutes granted after successfully completing an unlock protocol.', icon: '🍏' },
         'passive-reward': { title: 'Passive Reward', text: 'Earn bonus reward time just by spending time on your allowlist "productive" sites. This time can be used to unlock your restricted sites later.', icon: '🧠' },
         'browser-screen-time': { title: 'Browser Screen Time', text: 'Total time you can use the browser per day across all sites.', icon: '🌐' },
-        'session-allowance': { title: 'Launch Count', text: 'This budget limits how many times you can enter a blocked site within a rolling window (e.g. 3 launches per hour). A session ends as soon as you stop using the site for 2 minutes.', icon: '🚀' },
         'typing': { title: 'Typing Challenge', text: 'Requires you to type a long quote perfectly to unlock the site.', icon: '⌨️' },
         'password': { title: 'Password Protection', text: 'Requires a pre-set password to unlock. Ideal for accountability partners.', icon: '🔑' },
         'delay': { title: 'Time Delay', text: 'Forces you to wait for several minutes after initiating an unlock before access is granted.', icon: '🕒' },
@@ -1621,6 +1647,11 @@ function setupNewViewListeners() {
         if (backBtn) backBtn.click();
     });
 
+    // Mark dirty when frequency dropdown changes
+    document.getElementById('breathing-freq')?.addEventListener('change', () => {
+        markDirty();
+    });
+
     // SAVE REMINDERS SETTINGS
     document.getElementById('save-reminders-btn')?.addEventListener('click', () => {
         currentSettings.reminderInterval = Math.floor(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 15;
@@ -2019,4 +2050,77 @@ function updateTypingEffectiveness() {
     fill.style.background = color;
     text.textContent = label;
     text.style.color = color;
+}
+
+/**
+ * Strict Input Validation
+ * Prevents negative numbers, enforces min/max limits, and sanitizes input.
+ */
+function setupInputValidation() {
+    // Configuration for all numeric inputs
+    const numericInputs = [
+        { id: 'hardlock-input', min: 1, max: 1440 },        // Site Activity Limit (default 30 min)
+        { id: 'launch-limit-input', min: 1, max: 999 },     // Launch budget
+        { id: 'browser-limit-input', min: 1, max: 1440 },   // Browser daily limit
+        
+        { id: 'unlock-reward-input', min: 1, max: 1440 },   // Reward duration
+        { id: 'passive-reward-val', min: 1, max: 1440 },    // Passive earned
+        { id: 'passive-work-val', min: 1, max: 1440 },      // Passive work req
+        
+        { id: 'challenge-length-input', min: 1, max: 200 }, // Typing words
+        { id: 'proto-delay-val', min: 0, max: 120 },        // Unlock delay (0 is allowed)
+        
+        { id: 'breathing-input', min: 1, max: 300 },        // Pause duration (sec)
+        { id: 'pause-trigger-launch-val', min: 1, max: 999 }, // Pause launch trigger
+        { id: 'pause-trigger-browser-val', min: 1, max: 1440 }, // Pause screen time
+        
+        { id: 'reminder-input', min: 1, max: 1440 },        // Reminder interval
+        { id: 'reminder-trigger-browser-val', min: 1, max: 1440 }, // Reminder screen time
+        { id: 'reminder-trigger-launch-val', min: 1, max: 999 }    // Reminder launch trigger
+    ];
+
+    numericInputs.forEach(config => {
+        const input = document.getElementById(config.id);
+        if (!input) return;
+
+        // 1. Prevent invalid characters (-, +, e) during typing
+        input.addEventListener('keydown', (e) => {
+            // Allow navigation keys (backspace, delete, arrows, tab)
+            if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) return;
+            // Block invalid chars
+            if (['-', '+', 'e', 'E', '.'].includes(e.key)) {
+                e.preventDefault();
+            }
+        });
+
+        // 2. Sanitize on input (handles paste/drag)
+        input.addEventListener('input', () => {
+            const raw = input.value;
+            // Remove non-digit chars
+            if (!/^\d*$/.test(raw)) {
+                input.value = raw.replace(/\D/g, '');
+            }
+        });
+
+        // 3. Strict enforcement on blur (focus out)
+        input.addEventListener('blur', () => {
+            let val = parseInt(input.value, 10);
+            
+            // Handle empty or invalid
+            if (isNaN(val)) {
+                val = config.min; 
+            } else {
+                // Clamp functionality
+                if (val < config.min) val = config.min;
+                if (config.max && val > config.max) val = config.max;
+            }
+
+            // Update visible value if changed
+            if (input.value !== String(val)) {
+                input.value = val;
+                // Trigger change to ensure settings save
+                input.dispatchEvent(new Event('change'));
+            }
+        });
+    });
 }

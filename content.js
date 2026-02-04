@@ -215,8 +215,8 @@ const MediaController = {
 function normalizeTypingText(str) {
     if (!str) return "";
     return str
-        // Single Quote variants (Nuclear Coverage: Smart Quotes, Primes, Fullwidth, Modified Letters, Ticks)
-        .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A\u02BC\u02BB\u02B9\u00B4\u0060\u2032\u2035\uFF07\u02BD\u02C8\u02CA\u02CB\u02F4]/g, "'")
+        // Single Quote variants (Nuclear Coverage: Smart Quotes, Primes, Fullwidth, Modified Letters, Ticks, Grave)
+        .replace(/[\u2018\u2019\u201A\u201B\u2039\u203A\u02BC\u02BB\u02B9\u00B4\u0060\u2032\u2035\uFF07\u02BD\u02C8\u02CA\u02CB\u02F4\u0301]/g, "'")
         // Double Quote variants (Nuclear Coverage: Double Smart, Double Primes, Fullwidth, Chevrons)
         .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033\u2036\uFF02\u201F]/g, '"')
         // Dash/Hyphen variants (En, Em, Hyphen, Non-breaking hyphen, Figure dash, Minus)
@@ -3244,7 +3244,11 @@ class CureVault {
                         const charTyped = normalizeTypingText(val[i]);
                         const charTarget = normalizeTypingText(text[i]);
                         
-                        if (charTyped === charTarget) {
+                        // Fail-safe: Strict equality OR Loose Apostrophe check
+                        const isApostrophe = (c) => /^['\u2019\u00B4\u0060]$/.test(c);
+                        const match = (charTyped === charTarget) || (isApostrophe(charTyped) && isApostrophe(charTarget));
+
+                        if (match) {
                             span.className = 'cure-char correct';
                         } else {
                             span.className = 'cure-char error';
