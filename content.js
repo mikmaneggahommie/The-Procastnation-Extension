@@ -2561,25 +2561,25 @@ class CureVault {
         ` : '';
 
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 80px;">
+            <div class="cure-overlay-container" style="padding-top: 40px;">
                 <div class="cure-header">
                     <div style="font-size:42px; margin-bottom:4px;">⏰</div>
                     <h1 class="cure-title-large">Productivity Check</h1>
                     <p class="cure-subtitle">${contextText}</p>
-                    <p class="cure-pulse" style="font-size:48px; font-weight:700; color:#FF3B30; margin:16px 0;">${timeLabel}</p>
+                    <p class="cure-anim-pulse" style="font-size:32px; font-weight:700; color:#FF3B30; margin:16px 0;">${timeLabel}</p>
                     <p class="cure-subtitle" style="margin-top:0;">${timeUnit}</p>
                 </div>
+
+                ${shortcutsSection}
 
                 <div style="margin-top: 30px; text-align: center;">
                     <p style="color:#1D1D1F; font-size:18px; font-weight: 500; margin-bottom: 24px;">
                         Are you being productive, or just scrolling?
                     </p>
-                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #D1D1D6; color:#86868B; box-shadow:none; margin: 0 auto;">
+                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto;">
                         Continue Wasting Time
                     </button>
                 </div>
-
-                ${shortcutsSection}
             </div>
         `;
 
