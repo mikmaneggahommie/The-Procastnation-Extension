@@ -2553,9 +2553,10 @@ class CureVault {
         }).join('');
 
         const shortcutsSection = shortcuts ? `
-            <div style="margin-top:32px; text-align:center;">
-                <p style="color:#86868B; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:16px;">Productive Alternatives</p>
-                <div class="cure-shortcuts-grid">${shortcuts}</div>
+            <div class="cure-shortcuts-container" style="margin-top:24px;">
+                <div class="cure-shortcuts-label">Productive Alternatives</div>
+                <div class="cure-hand-pointer">👇</div>
+                <div class="cure-shortcuts-row">${shortcuts}</div>
             </div>
         ` : '';
 
