@@ -820,13 +820,13 @@ function setupListeners() {
                 }
             });
 
-            saveSettings();
-            updateUIState();
-            
-            // Only show indicator for home-screen master toggles
             if (id.startsWith('master-')) {
+                saveSettings();
                 showSavedIndicator();
+            } else {
+                markDirty();
             }
+            updateUIState();
         });
         }
     });
