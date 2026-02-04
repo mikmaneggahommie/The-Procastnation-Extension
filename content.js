@@ -585,7 +585,8 @@ class CureVault {
                 if (request.type === 'forceHardLock') {
                     this.stateHardLock('limit', true);
                 } else if (request.type === 'forceReminder') {
-                    this.renderReminderOverlay(0, 'time', true);
+                    const currentMins = Math.floor(this.activeSeconds / 60);
+                    this.renderReminderOverlay(currentMins, 'time', true);
                 } else if (request.type === 'forceBreathing') {
                     this.stateBreathingRoom('manual_test', true);
                 }
@@ -2689,7 +2690,7 @@ class CureVault {
 
                 <div style="margin-top: 10px;">
                      <button id="cure-unlock-decision-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none;">
-                        I want to procrastinate (Unlock)
+                        Continue Wasting Time (Unlock)
                      </button>
                 </div>
             </div>
