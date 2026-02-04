@@ -2561,7 +2561,7 @@ class CureVault {
         ` : '';
 
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 40px;">
+            <div class="cure-overlay-container">
                 <div class="cure-header" style="margin-bottom:0px;">
                     <div style="font-size:42px; margin-bottom:4px;">⏰</div>
                     <h1 class="cure-title-large">Productivity Check</h1>
