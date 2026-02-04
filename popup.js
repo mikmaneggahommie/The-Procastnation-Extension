@@ -820,8 +820,7 @@ function setupListeners() {
                 }
             });
 
-            // saveSettings(); // REMOVED: No auto-save on masters
-            markDirty();
+            saveSettings();
             updateUIState();
             
             // Only show indicator for home-screen master toggles
