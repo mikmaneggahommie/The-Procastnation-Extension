@@ -2554,7 +2554,7 @@ class CureVault {
         }).join('');
 
         const shortcutsSection = shortcuts ? `
-            <div class="cure-shortcuts-container" style="margin-top:12px;">
+            <div class="cure-shortcuts-container" style="margin-top:32px;">
                 <div class="cure-shortcuts-label">Productive Alternatives</div>
                 <div class="cure-hand-pointer">👇</div>
                 <div class="cure-shortcuts-row">${shortcuts}</div>
@@ -2573,7 +2573,7 @@ class CureVault {
 
                 ${shortcutsSection}
 
-                <div style="margin-top: 30px; text-align: center;">
+                <div style="margin-top: 40px; text-align: center;">
                     <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin-bottom: 24px;">
                         Are you being productive, or just scrolling?
                     </p>
@@ -2680,7 +2680,7 @@ class CureVault {
                     <p class="cure-subtitle">${subtitle}</p>
                 </div>
 
-                <div class="cure-shortcuts-container" style="margin-bottom: 32px;">
+                <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 40px;">
                     <div class="cure-shortcuts-label">Productive Alternatives</div>
                     <div class="cure-hand-pointer">👇</div>
                     <div class="cure-shortcuts-row">
@@ -2688,7 +2688,7 @@ class CureVault {
                     </div>
                 </div>
 
-                <div style="margin-top: 10px;">
+                <div style="margin-top: 0px;">
                      <button id="cure-unlock-decision-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none;">
                         Continue Wasting Time (Unlock)
                      </button>
@@ -2779,7 +2779,7 @@ class CureVault {
             <p class="cure-subtitle" style="margin-top: 4px; color: #86868B;">${message}</p>
             <p class="cure-quote-medium" style="margin-top: 12px;">"${quote}"</p>
             
-            <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 30px;">
+            <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 40px;">
                 <div class="cure-shortcuts-label">Productive Alternatives</div>
                 <div class="cure-hand-pointer">👇</div>
                 <div class="cure-shortcuts-row">${shortcuts}</div>
@@ -3357,7 +3357,7 @@ class CureVault {
             : `You have unlocked <b style="color:#1D1D1F;">${mins}min</b>.<br>The clock is ticking backwards now.`;
 
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 60px;">
+            <div class="cure-overlay-container" style="padding-top: 80px;">
                 <div class="cure-header">
                     <div style="font-size:42px; margin-bottom:4px;">${isAutoClose ? '✨' : '🔓'}</div>
                     <h1 class="cure-title-large">${isAutoClose ? 'Task Complete' : 'Strict Lock Lifted'}</h1>
@@ -3366,7 +3366,7 @@ class CureVault {
                     </p>
                 </div>
 
-                <div class="cure-shortcuts-container" style="margin-bottom: 32px;">
+                <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 40px;">
                     <div class="cure-shortcuts-label">Productive Alternatives</div>
                     <div class="cure-hand-pointer">👇</div>
                     <div class="cure-shortcuts-row">${shortcuts}</div>
