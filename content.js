@@ -585,7 +585,7 @@ class CureVault {
                 if (request.type === 'forceHardLock') {
                     this.stateHardLock('limit', true);
                 } else if (request.type === 'forceReminder') {
-                    this.renderReminderOverlay(5, 'time', true);
+                    this.renderReminderOverlay(0, 'time', true);
                 } else if (request.type === 'forceBreathing') {
                     this.stateBreathingRoom('manual_test', true);
                 }
