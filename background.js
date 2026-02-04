@@ -5,13 +5,21 @@
 let g_dailyStats = null;
 let g_settingsCache = null;
 let g_lockSnapshots = {}; // Persistent Rule Snapshots for anti-cheat
+let g_systemInstanceId = null; // Fix: Unique ID to invalidate stale sessionStorage on reinstall/reset
 
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
 
 // Load Snapshots on Start
-chrome.storage.local.get('lockSnapshots', res => {
+chrome.storage.local.get(['lockSnapshots', 'systemInstanceId'], res => {
     if (res.lockSnapshots) g_lockSnapshots = res.lockSnapshots;
+    // Fix: Initialize System ID (Generate if missing, primarily for first run or after reinstall)
+    if (res.systemInstanceId) {
+        g_systemInstanceId = res.systemInstanceId;
+    } else {
+        g_systemInstanceId = Math.random().toString(36).substring(2, 15);
+        chrome.storage.local.set({ systemInstanceId: g_systemInstanceId });
+    }
 });
 
 
@@ -252,6 +260,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.log(`[Cure] Challenge finished on ${hostname} (Tab ${tabId})`);
         }
         sendResponse({ success: true });
+        return;
+    }
+
+    if (request.action === 'getSystemInfo') {
+        sendResponse({ instanceId: g_systemInstanceId });
         return;
     }
 
@@ -924,6 +937,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'factoryReset') {
+        // Fix: Rotate System Instance ID on reset to invalidate all other tabs
+        g_systemInstanceId = Math.random().toString(36).substring(2, 15);
+        chrome.storage.local.set({ systemInstanceId: g_systemInstanceId });
+
         // 1. Storage Sequence Closure (Flattened for safety)
         const finalizeReset = () => {
             chrome.storage.sync.set({ settings: DEFAULT_SETTINGS }, () => {

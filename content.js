@@ -933,6 +933,29 @@ class CureVault {
         this._toastDebounce = false;
         this._resetToastPending = false;
         if (!this.isContextValid()) return;
+
+        // FIX: "The Haunted Overlay" (Stale State Persistence)
+        // Check if the extension instance has changed (Reinstall/Factory Reset)
+        // If so, NUCLEAR WIPE any existing session storage to prevent "phantom locks".
+        try {
+            await new Promise(resolve => {
+                this.safeSendMessage({ action: 'getSystemInfo' }, (res) => {
+                     const currentSysId = res?.instanceId;
+                     if (currentSysId) {
+                         const storedSysId = sessionStorage.getItem('cure_system_instance_id');
+                         if (storedSysId && storedSysId !== currentSysId) {
+                             console.warn('[Cure] System Instance changed. Wiping stale storage.');
+                             const keys = Object.keys(sessionStorage);
+                             keys.forEach(k => {
+                                 if (k.startsWith('cure_')) sessionStorage.removeItem(k);
+                             });
+                         }
+                         sessionStorage.setItem('cure_system_instance_id', currentSysId);
+                     }
+                     resolve();
+                });
+            });
+        } catch (e) { /* Ignore setup errors */ }
         
         // FIX 86: Branch for Iframe logic
         if (this.isIframe) {
@@ -990,7 +1013,12 @@ class CureVault {
         // FIX: Immediate Whitelist Shortcut.
         // On whitelisted sites, we don't need to check reset status or lock status from background.
         // This prevents timeouts on sites like Google/GitHub.
-        if (this.isWhitelisted()) {
+        // FIX 129: BUT we must respect "Enable on Allowlist" for Reminders/Pause.
+        // If those are ON, we cannot short-circuit, or we'll get a Render->Clear->Render freeze loop.
+        const whitelistReminders = !!this.settings.reminderWhitelist;
+        const whitelistPause = !!this.settings.pauseWhitelist;
+
+        if (this.isWhitelisted() && !whitelistReminders && !whitelistPause) {
             this.removeOverlay();
             return Promise.resolve();
         }
@@ -2449,7 +2477,12 @@ class CureVault {
 
     renderOverlay(mode, message = "Take a breath.", forced = false, phase = 'decision') {
         // FIX 108: Ultimate Whitelist Safety
-        if (this.isWhitelisted() && !forced) {
+        // FIX 129: Respect "Enable on Allowlist" for Reminders/Pause screens.
+        const whitelistReminders = !!this.settings.reminderWhitelist;
+        const whitelistPause = !!this.settings.pauseWhitelist;
+        const isSafeToRender = (mode === 'breathing' && (whitelistReminders || whitelistPause));
+
+        if (this.isWhitelisted() && !forced && !isSafeToRender) {
             this.removeOverlay();
             return;
         }
