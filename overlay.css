@@ -596,7 +596,7 @@
   color: white;
   border: none;
   padding: 16px 36px;
-  border-radius: 16px;
+  border-radius: 12px;
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -628,10 +628,14 @@
 .cure-btn-content {
   position: relative;
   z-index: 2;
+  line-height: normal;
+}
+
+.cure-btn-unlock.counting .cure-btn-content {
   mix-blend-mode: difference;
   /* Auto-inverts: dark on light, light on dark */
   color: #ffffff;
-  /* Base color that gets inverted */
+  /* Base color that gets inverted by the filling progress bar */
 }
 
 .cure-btn-unlock.counting {
