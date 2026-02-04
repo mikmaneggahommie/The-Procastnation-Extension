@@ -630,8 +630,12 @@ function renderShortcuts(filter = '') {
     list.innerHTML = '';
 
     let items = currentSettings.shortcuts || [];
+    const allowlistSection = document.getElementById('shortcut-allowlist-section');
     if (filter) {
         items = items.filter(s => s.name.toLowerCase().includes(filter.toLowerCase()) || s.url.toLowerCase().includes(filter.toLowerCase()));
+        if (allowlistSection) allowlistSection.style.display = 'none';
+    } else {
+        if (allowlistSection) allowlistSection.style.display = 'block';
     }
 
     if (!items.length) {
