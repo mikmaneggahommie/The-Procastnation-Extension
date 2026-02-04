@@ -2779,17 +2779,17 @@ class CureVault {
             <p class="cure-subtitle" style="margin-top: 4px; color: #86868B;">${message}</p>
             <p class="cure-quote-medium" style="margin-top: 12px;">"${quote}"</p>
             
-            <div class="cure-action-wrapper">
+            <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 20px;">
+                <div class="cure-shortcuts-label">Productive Alternatives</div>
+                <div class="cure-hand-pointer">👇</div>
+                <div class="cure-shortcuts-row">${shortcuts}</div>
+            </div>
+
+            <div class="cure-action-wrapper" style="margin: 0;">
                 <button id="cure-continue-btn" class="cure-btn-unlock counting" style="margin:0 auto;">
                     <div id="cure-progress-fill" class="cure-progress-fill-anim"></div>
                     <span id="cure-btn-text" class="cure-btn-content">Readying...</span>
                 </button>
-            </div>
-
-            <div class="cure-shortcuts-container" style="margin-bottom: 32px;">
-                <div class="cure-shortcuts-label">Productive Alternatives</div>
-                <div class="cure-hand-pointer">👇</div>
-                <div class="cure-shortcuts-row">${shortcuts}</div>
             </div>
         </div >
             `;
