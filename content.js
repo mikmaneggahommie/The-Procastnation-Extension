@@ -2553,7 +2553,7 @@ class CureVault {
         }).join('');
 
         const shortcutsSection = shortcuts ? `
-            <div class="cure-shortcuts-container" style="margin-top:24px;">
+            <div class="cure-shortcuts-container" style="margin-top:12px;">
                 <div class="cure-shortcuts-label">Productive Alternatives</div>
                 <div class="cure-hand-pointer">👇</div>
                 <div class="cure-shortcuts-row">${shortcuts}</div>
