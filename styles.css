@@ -551,22 +551,21 @@ body {
   border-color: #c7c7cc;
 }
 
-/* CONFIG NUMBER INPUT (Tinted with visible border) */
+/* CONFIG NUMBER INPUT (Compact, matching clean style) */
 .config-number-input {
-  width: 70px;
-  padding: 8px 12px;
-  border: 1px solid #d1d1d6;
-  /* Visible border */
+  width: 60px;
+  padding: 12px 8px;
+  border: none;
   border-radius: 8px;
   font-size: 15px;
   font-weight: 600;
   text-align: center;
   background: #f2f2f7;
-  /* Tinted gray match */
   color: #1d1d1f;
   -webkit-appearance: none;
   appearance: none;
   transition: all 0.2s;
+  box-sizing: border-box;
 }
 
 .config-number-input:focus {
