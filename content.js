@@ -2553,7 +2553,7 @@ class CureVault {
         }).join('');
 
         const shortcutsSection = shortcuts ? `
-            <div class="cure-shortcuts-container" style="margin-top:12px;">
+            <div class="cure-shortcuts-container" style="margin-top:0px;">
                 <div class="cure-shortcuts-label">Productive Alternatives</div>
                 <div class="cure-hand-pointer">👇</div>
                 <div class="cure-shortcuts-row">${shortcuts}</div>
@@ -2562,12 +2562,12 @@ class CureVault {
 
         overlay.innerHTML = `
             <div class="cure-overlay-container" style="padding-top: 40px;">
-                <div class="cure-header">
+                <div class="cure-header" style="margin-bottom:0px;">
                     <div style="font-size:42px; margin-bottom:4px;">⏰</div>
                     <h1 class="cure-title-large">Productivity Check</h1>
                     <p class="cure-subtitle">${contextText}</p>
                     <p class="cure-anim-pulse" style="font-size:32px; font-weight:700; color:#FF3B30; margin:16px 0;">${timeLabel}</p>
-                    <p class="cure-subtitle" style="margin-top:0;">${timeUnit}</p>
+                    <p class="cure-subtitle" style="margin:0;">${timeUnit}</p>
                 </div>
 
                 ${shortcutsSection}
