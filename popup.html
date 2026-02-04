@@ -533,11 +533,7 @@
                 <div class="sentence-row">
                   Limit to
                   <input
-                    type="number"
-                    id="hardlock-input"
-                    class="config-number-input"
-                    min="1"
-                  />
+                  <input type="number" id="hardlock-input" class="clean-input" value="30" min="0" />
                   <select id="hardlock-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
@@ -572,13 +568,7 @@
               <div class="sub-config" id="config-launch-limit">
                 <div class="sentence-row">
                   Allow
-                  <input
-                    type="number"
-                    id="launch-limit-input"
-                    class="config-number-input"
-                    min="1"
-                    value="3"
-                  />
+                  <input type="number" id="launch-limit-input" class="clean-input" value="3" min="0" />
                   launches every
                   <select id="launch-limit-window" class="dropdown-input">
                     <option value="1800">30 minutes</option>
@@ -608,12 +598,7 @@
               <div class="sub-config" id="config-browser-limit">
                 <div class="sentence-row">
                   Limit to
-                  <input
-                    type="number"
-                    id="browser-limit-input"
-                    class="config-number-input"
-                    min="1"
-                  />
+                  <input type="number" id="browser-limit-input" class="clean-input" value="480" min="0" />
                   <select id="browser-limit-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
@@ -649,7 +634,7 @@
                     type="number"
                     id="unlock-reward-input"
                     class="config-number-input"
-                    min="1"
+                    min="0"
                     value="5"
                   />
                   <select id="unlock-reward-unit" class="unit-selector">
@@ -684,7 +669,7 @@
                     type="number"
                     id="passive-reward-val"
                     class="config-number-input"
-                    min="1"
+                    min="0"
                     value="5"
                   />
                   <select id="passive-reward-unit" class="unit-selector">
@@ -696,7 +681,7 @@
                     type="number"
                     id="passive-work-val"
                     class="config-number-input"
-                    min="1"
+                    min="0"
                     value="25"
                   />
                   <select id="passive-work-unit" class="unit-selector">
@@ -729,7 +714,7 @@
                     type="number"
                     id="challenge-length-input"
                     class="config-number-input"
-                    min="10"
+                    min="0"
                     max="200"
                     value="50"
                   />
@@ -864,7 +849,7 @@
                     type="number"
                     id="proto-delay-val"
                     class="config-number-input"
-                    min="1"
+                    min="0"
                     value="5"
                   />
                   <select id="proto-delay-unit" class="unit-selector">
@@ -938,11 +923,7 @@
               <div class="sub-config">
                 <div class="sentence-row">
                   Show for
-                  <input
-                    type="number"
-                    id="breathing-input"
-                    class="config-number-input"
-                  />
+                  <input type="number" id="breathing-input" class="clean-input" value="15" min="0" />
                   <select id="breathing-unit" class="unit-selector">
                     <option value="sec">seconds</option>
                     <option value="min">minutes</option>
@@ -979,6 +960,7 @@
                     id="pause-trigger-launch-val"
                     class="config-number-input"
                     value="5"
+                    min="0"
                   />
                   launches per hour.
                 </div>
@@ -1004,6 +986,7 @@
                     id="pause-trigger-browser-val"
                     class="config-number-input"
                     value="120"
+                    min="0"
                   />
                   minutes total browsing today.
                 </div>
@@ -1057,11 +1040,7 @@
               <div class="sub-config">
                 <div class="sentence-row">
                   Remind every
-                  <input
-                    type="number"
-                    id="reminder-input"
-                    class="config-number-input"
-                  />
+                  <input type="number" id="reminder-input" class="clean-input" value="15" min="0" />
                   <select id="reminder-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>

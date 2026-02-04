@@ -132,10 +132,70 @@ function showConfirmDialog(title, msg, onSave, onDiscard) {
         onDiscard();
     };
 
-    // Close on background click (Optional: behavior usually forces action)
+    // Close on background click
     modal.onclick = (e) => {
         if (e.target === modal) modal.style.display = 'none';
     };
+}
+
+// --- VALIDATION HELPERS ---
+function isValidDomain(domain) {
+    if (!domain) return false;
+    // Regex for valid domain format:
+    // - Alphanumeric with hyphens
+    // - Must have at least one dot (e.g. example.com, localhost matches exception)
+    // - No spaces
+    // - Not a phone number (redundant check via regex structure but explicit logic holds)
+    
+    // Allow 'localhost' as special case
+    if (domain === 'localhost') return true;
+
+    // Basic domain regex
+    // ^(?![0-9]+$) -> Not only numbers
+    // [a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9] -> Part
+    // \.[a-zA-Z]{2,}$ -> TLD
+    const domainRegex = /^(?!:\/\/)([a-zA-Z0-9-_]{1,63}\.)+[a-zA-Z]{2,63}$/;
+    
+    // Explicitly reject purely numeric strings to catch phone numbers
+    if (/^\+?\d+$/.test(domain)) return false;
+
+    return domainRegex.test(domain);
+}
+
+    return domainRegex.test(domain);
+}
+
+function sanitizeDomainInput(input) {
+    if (!input) return '';
+    let domain = input.trim().toLowerCase();
+    
+    // Attempt URL parsing to handle protocols, paths, query params
+    try {
+        // If it lacks a protocol, generic URL parsing might fail or treat it as relative.
+        // Prepending http:// ensures 'google.com' parses correctly as hostname.
+        if (!domain.includes('://')) {
+            domain = 'http://' + domain;
+        }
+        const urlObj = new URL(domain);
+        domain = urlObj.hostname;
+    } catch (e) {
+        // If parsing fails, fall back to original (validation will catch it)
+        return input.trim().toLowerCase();
+    }
+
+    // Strip common prefixes
+    domain = domain.replace(/^www\./, '');
+    return domain;
+}
+
+function isValidUrl(url) {
+    if (!url) return false;
+    try {
+        new URL(url);
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 /**
@@ -302,7 +362,18 @@ function getConvertedVal(id, unitId) {
     const unit = document.getElementById(unitId);
     if (!input || !unit) return 0;
 
-    const val = parseInt(input.value) || 0;
+    let val = parseInt(input.value);
+    
+    // STRICT VALIDATION
+    if (isNaN(val)) val = 0;
+    if (val < 0) val = 0; // Prevent negative inputs
+
+    // Auto-correct standard inputs if they are invalid
+    if (input.type === 'number' && input.value !== val.toString()) {
+        // If user entered "12a" or "-5", simple fix on save
+        input.value = val;
+    }
+
     const unitVal = unit.value;
     return val * (UNIT_FACTORS[unitVal] || 60); // Default to min factor if missing
 }
@@ -535,10 +606,23 @@ function renderWhitelist(filter = '') {
         const originalIndex = currentSettings.whitelist.indexOf(site);
         const item = document.createElement('div');
         item.className = 'settings-item';
-        item.innerHTML = `
-      <div class="item-text"><h3>${site}</h3></div>
-      <button class="action-btn danger-btn" data-type="whitelist" data-index="${originalIndex}" style="font-size:11px; padding:4px 10px;">Remove</button>
-    `;
+        
+        const leftDiv = document.createElement('div');
+        leftDiv.className = 'item-text';
+        const h3 = document.createElement('h3');
+        h3.textContent = site;
+        leftDiv.appendChild(h3);
+
+        const btn = document.createElement('button');
+        btn.className = 'action-btn danger-btn';
+        btn.dataset.type = 'whitelist';
+        btn.dataset.index = originalIndex;
+        btn.style.fontSize = '11px';
+        btn.style.padding = '4px 10px';
+        btn.textContent = 'Remove';
+
+        item.appendChild(leftDiv);
+        item.appendChild(btn);
         list.appendChild(item);
     });
 }
@@ -560,13 +644,26 @@ function renderShortcuts(filter = '') {
         const originalIndex = currentSettings.shortcuts.indexOf(s);
         const item = document.createElement('div');
         item.className = 'settings-item';
-        item.innerHTML = `
-      <div class="item-text">
-        <h3>${s.name}</h3>
-        <p>${s.url}</p>
-      </div>
-      <button class="action-btn danger-btn" data-type="shortcut" data-index="${originalIndex}" style="font-size:11px; padding:4px 10px;">Remove</button>
-    `;
+        
+        const leftDiv = document.createElement('div');
+        leftDiv.className = 'item-text';
+        const h3 = document.createElement('h3');
+        h3.textContent = s.name;
+        const p = document.createElement('p');
+        p.textContent = s.url;
+        leftDiv.appendChild(h3);
+        leftDiv.appendChild(p);
+
+        const btn = document.createElement('button');
+        btn.className = 'action-btn danger-btn';
+        btn.dataset.type = 'shortcut';
+        btn.dataset.index = originalIndex;
+        btn.style.fontSize = '11px';
+        btn.style.padding = '4px 10px';
+        btn.textContent = 'Remove';
+
+        item.appendChild(leftDiv);
+        item.appendChild(btn);
         list.appendChild(item);
     });
 }
@@ -589,10 +686,23 @@ function renderBlocklist(filter = '') {
         const originalIndex = currentSettings.blacklist.indexOf(site);
         const item = document.createElement('div');
         item.className = 'settings-item';
-        item.innerHTML = `
-      <div class="item-text"><h3>${site}</h3></div>
-      <button class="action-btn danger-btn" data-type="blacklist" data-index="${originalIndex}" style="font-size:11px; padding:4px 10px;">Remove</button>
-    `;
+        
+        const leftDiv = document.createElement('div');
+        leftDiv.className = 'item-text';
+        const h3 = document.createElement('h3');
+        h3.textContent = site;
+        leftDiv.appendChild(h3);
+
+        const btn = document.createElement('button');
+        btn.className = 'action-btn danger-btn';
+        btn.dataset.type = 'blacklist';
+        btn.dataset.index = originalIndex;
+        btn.style.fontSize = '11px';
+        btn.style.padding = '4px 10px';
+        btn.textContent = 'Remove';
+
+        item.appendChild(leftDiv);
+        item.appendChild(btn);
         list.appendChild(item);
     });
 }
@@ -1146,11 +1256,19 @@ function setupListeners() {
                 v = v.replace(/^www\./, '');
             } catch (e) { }
 
+            // STRICT VALIDATION
+            if (!isValidDomain(v)) {
+                showCustomAlert("Invalid Domain", "Please enter a valid domain (e.g., example.com). Phone numbers and text are not allowed.");
+                return;
+            }
+
             if (v && !currentSettings.whitelist.includes(v)) {
                 currentSettings.whitelist.push(v);
                 markDirty();
                 renderWhitelist();
                 document.getElementById('new-site-input').value = '';
+            } else if (currentSettings.whitelist.includes(v)) {
+                 showCustomAlert("Duplicate Entry", "This site is already in your allowlist.");
             }
         });
     }
@@ -1168,11 +1286,19 @@ function setupListeners() {
                 v = v.replace(/^www\./, '');
             } catch (e) { }
 
+             // STRICT VALIDATION
+            if (!isValidDomain(v)) {
+                showCustomAlert("Invalid Domain", "Please enter a valid domain (e.g., example.com).");
+                return;
+            }
+
             if (v && !currentSettings.blacklist.includes(v)) {
                 currentSettings.blacklist.push(v);
                 markDirty();
                 renderBlocklist();
                 document.getElementById('new-block-input').value = '';
+            } else if (currentSettings.blacklist.includes(v)) {
+                showCustomAlert("Duplicate Entry", "This site is already blocked.");
             }
         });
     }
@@ -1186,13 +1312,22 @@ function setupListeners() {
             }
             const n = document.getElementById('new-shortcut-name').value.trim();
             const u = document.getElementById('new-shortcut-url').value.trim();
-            if (n && u) {
-                currentSettings.shortcuts.push({ name: n, url: u });
-                markDirty();
-                renderShortcuts();
-                document.getElementById('new-shortcut-name').value = '';
-                document.getElementById('new-shortcut-url').value = '';
+            
+            if (!n) {
+                showCustomAlert("Missing Name", "Please enter a name for the shortcut.");
+                return;
             }
+
+            if (!isValidUrl(u)) {
+                showCustomAlert("Invalid URL", "Please enter a full valid URL (e.g., https://youtube.com).");
+                return;
+            }
+
+            currentSettings.shortcuts.push({ name: n, url: u });
+            markDirty();
+            renderShortcuts();
+            document.getElementById('new-shortcut-name').value = '';
+            document.getElementById('new-shortcut-url').value = '';
         });
     }
 
