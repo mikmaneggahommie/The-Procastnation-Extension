@@ -389,6 +389,16 @@
   width: 100%;
 }
 
+.cure-shortcuts-grid {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
 .cure-shortcuts-label {
   font-size: 24px;
   color: #1d1d1f;
