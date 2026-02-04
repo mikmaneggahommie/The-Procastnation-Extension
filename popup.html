@@ -313,6 +313,22 @@
           <div class="section-label">Current Shortcuts</div>
           <div id="shortcuts-container" class="card-group"></div>
         </div>
+
+        <!-- Allowlist Toggle -->
+        <div class="settings-section" style="padding-top: 24px;">
+          <div class="card-group">
+            <div class="settings-item">
+              <div class="item-text">
+                <h3>Bypass Blocking</h3>
+                <p>Never block shortcut sites</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="whitelist-shortcuts-input" />
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="fixed-footer">
         <button id="save-shortcuts-btn" class="action-btn" style="width: 100%">
@@ -344,19 +360,6 @@
               </div>
             </div>
 
-            <!-- Whitelist Shortcuts -->
-            <div class="settings-item-group">
-              <div class="settings-item">
-                <div class="item-text">
-                  <h3>Allowlist Shortcuts</h3>
-                  <p>Auto-whitelist your productive alternatives</p>
-                </div>
-                <label class="switch">
-                  <input type="checkbox" id="whitelist-shortcuts-input" />
-                  <span class="slider round"></span>
-                </label>
-              </div>
-            </div>
 
             <!-- Timer UI -->
             <div class="settings-item-group">
