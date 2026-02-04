@@ -2509,9 +2509,17 @@ class CureVault {
         // FIX 100: Reminders are not relevant for iframes - just silently skip
         if (this.isIframe && !forced) return;
 
-        let message = `You've been here for <span style="color:#FF3B30">${value}</span> mins.`;
-        if (type === 'browser') message = `Daily browsing limit reached (<span style="color:#FF3B30">${value}</span> mins).`;
-        if (type === 'launch') message = `Visit limit reached (<span style="color:#FF3B30">${value}</span> visits).`;
+        let timeLabel = `${value}`;
+        let timeUnit = 'mins.';
+        let contextText = "You've been here for";
+
+        if (type === 'browser') {
+            contextText = "Daily browsing limit reached";
+            timeUnit = 'mins.';
+        } else if (type === 'launch') {
+            contextText = "Visit limit reached";
+            timeUnit = 'visits.';
+        }
 
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
@@ -2523,20 +2531,42 @@ class CureVault {
         }
 
         localStorage.setItem('cure_reminder_active', '1');
-        this.renderOverlay('breathing', message, forced);
+        this.renderOverlay('breathing', contextText, forced);
 
         if (!this.shadowRoot) return;
         const overlay = this.shadowRoot.getElementById(this.overlayId);
         if (!overlay) return;
 
+        // Build shortcuts HTML
+        const shortcuts = (this.settings.shortcuts || []).slice(0, 6).map(s => {
+            const iconUrl = this.getFaviconUrl(s.url);
+            let hostname = '';
+            try {
+                hostname = new URL(s.url).hostname;
+            } catch (e) {
+                return '';
+            }
+            return `<a href="${s.url}" class="cure-shortcut-card">
+                <img src="${iconUrl}" class="cure-shortcut-icon" onerror="this.src='https://www.google.com/s2/favicons?domain=${hostname}&sz=64'">
+                <span class="cure-shortcut-name">${s.name}</span>
+            </a>`;
+        }).join('');
+
+        const shortcutsSection = shortcuts ? `
+            <div style="margin-top:32px; text-align:center;">
+                <p style="color:#86868B; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-bottom:16px;">Productive Alternatives</p>
+                <div class="cure-shortcuts-grid">${shortcuts}</div>
+            </div>
+        ` : '';
+
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 40px;">
+            <div class="cure-overlay-container" style="padding-top: 80px;">
                 <div class="cure-header">
                     <div style="font-size:42px; margin-bottom:4px;">⏰</div>
                     <h1 class="cure-title-large">Productivity Check</h1>
-                    <p class="cure-subtitle" style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                       ${message}
-                    </p>
+                    <p class="cure-subtitle">${contextText}</p>
+                    <p class="cure-pulse" style="font-size:48px; font-weight:700; color:#FF3B30; margin:16px 0;">${timeLabel}</p>
+                    <p class="cure-subtitle" style="margin-top:0;">${timeUnit}</p>
                 </div>
 
                 <div style="margin-top: 30px; text-align: center;">
@@ -2547,6 +2577,8 @@ class CureVault {
                         Continue Wasting Time
                     </button>
                 </div>
+
+                ${shortcutsSection}
             </div>
         `;
 
