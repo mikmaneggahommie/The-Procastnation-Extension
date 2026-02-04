@@ -2640,7 +2640,7 @@ class CureVault {
 
         overlay.innerHTML = `
             <div class="cure-overlay-container">
-                <div class="cure-header" style="margin-bottom: 24px;">
+                <div class="cure-header" style="margin-bottom: 16px;">
                     <div style="font-size:42px; margin-bottom:10px;">${emoji}</div>
                     <h1 class="cure-title-large">${title}</h1>
                     <p class="cure-subtitle">${subtitle}</p>
@@ -2654,7 +2654,7 @@ class CureVault {
                     </div>
                 </div>
 
-                <div style="margin-top: 20px;">
+                <div style="margin-top: 10px;">
                      <button id="cure-unlock-decision-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none;">
                         I want to procrastinate (Unlock)
                      </button>
@@ -2725,8 +2725,15 @@ class CureVault {
         const quote = this.getRandomQuote();
         const shortcuts = (this.settings.shortcuts || []).slice(0, 6).map(s => {
             const iconUrl = this.getFaviconUrl(s.url);
+            let hostname = '';
+            try {
+                hostname = new URL(s.url).hostname;
+            } catch (e) {
+                console.warn("Invalid shortcut URL:", s.url, e);
+                return ''; 
+            }
             return `<a href="${s.url}" class="cure-shortcut-card">
-                <img src="${iconUrl}" class="cure-shortcut-icon" onerror="this.src='https://www.google.com/s2/favicons?domain=${new URL(s.url).hostname}&sz=64'"> 
+                <img src="${iconUrl}" class="cure-shortcut-icon" onerror="this.src='https://www.google.com/s2/favicons?domain=${hostname}&sz=64'"> 
                 <span class="cure-shortcut-name">${s.name}</span>
             </a>`;
         }).join('');
@@ -2805,7 +2812,7 @@ class CureVault {
 
     renderGodMode(overlay) {
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="justify-content: flex-start; padding-top: 80px;">
+            <div class="cure-overlay-container" style="justify-content: flex-start; padding-top: 100px;">
                 <div style="font-size:80px; margin-bottom:20px;">⛔</div>
                 <h1 class="cure-title-large">Locked Until Reset</h1>
                 <p class="cure-subtitle" style="margin-top:10px; max-width:400px; text-align:center;">
@@ -2836,7 +2843,7 @@ class CureVault {
         const circumference = 2 * Math.PI * radius;
 
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="justify-content: flex-start; padding-top: 80px;">
+            <div class="cure-overlay-container" style="justify-content: flex-start;">
                 <div style="font-size:60px; margin-bottom:16px;">⏳</div>
                 <h1 class="cure-title-large">Patience is Key</h1>
                 <p class="cure-subtitle" style="margin-top:8px; margin-bottom:30px;">You must wait before attempting to unlock.</p>
@@ -2914,7 +2921,7 @@ class CureVault {
         await this.checkGlobalResets(); // FIX 89: Check for resets when starting
         const correctPassword = this.settings.unlockProtocols.password.value;
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="justify-content: flex-start; padding-top: 60px;">
+            <div class="cure-overlay-container" style="justify-content: flex-start;">
                 <div style="font-size:42px; margin-bottom:12px;">🔑</div>
                 <h1 class="cure-title-large">Password Required</h1>
                 <p class="cure-subtitle" style="margin-top:4px;">Enter your secret key to proceed.</p>
@@ -3067,7 +3074,7 @@ class CureVault {
         const reward = this.settings.unlockReward || 5;
 
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 30px;">
+            <div class="cure-overlay-container" style="padding-top: 60px;">
                 <div class="cure-header" style="margin-bottom: 8px;">
                     <div style="font-size:42px; margin-bottom:4px;">🔒</div>
                     <h1 class="cure-title-large">Strict Lock Active</h1>
@@ -3294,8 +3301,15 @@ class CureVault {
 
         const shortcuts = (this.settings.shortcuts || []).slice(0, 6).map(s => {
             const iconUrl = this.getFaviconUrl(s.url);
+            let hostname = '';
+            try {
+                hostname = new URL(s.url).hostname;
+            } catch (e) {
+                console.warn("Invalid shortcut URL:", s.url, e);
+                return ''; 
+            }
             return `<a href="${s.url}" class="cure-shortcut-card">
-                <img src="${iconUrl}" class="cure-shortcut-icon" onerror="this.src='https://www.google.com/s2/favicons?domain=${new URL(s.url).hostname}&sz=64'"> 
+                <img src="${iconUrl}" class="cure-shortcut-icon" onerror="this.src='https://www.google.com/s2/favicons?domain=${hostname}&sz=64'"> 
                 <span class="cure-shortcut-name">${s.name}</span>
             </a>`;
         }).join('');
@@ -3306,7 +3320,7 @@ class CureVault {
             : `You have unlocked <b style="color:#1D1D1F;">${mins}min</b>.<br>The clock is ticking backwards now.`;
 
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 30px;">
+            <div class="cure-overlay-container" style="padding-top: 60px;">
                 <div class="cure-header">
                     <div style="font-size:42px; margin-bottom:4px;">${isAutoClose ? '✨' : '🔓'}</div>
                     <h1 class="cure-title-large">${isAutoClose ? 'Task Complete' : 'Strict Lock Lifted'}</h1>

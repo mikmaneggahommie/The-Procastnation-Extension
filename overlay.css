@@ -5,7 +5,7 @@
   width: 100%;
   max-width: 600px;
   min-height: 100vh;
-  padding: 120px 20px 40px 20px;
+  padding: 80px 20px 40px 20px;
   /* Original gap */
   box-sizing: border-box;
   justify-content: flex-start;
@@ -72,6 +72,16 @@
       flex-direction: column !important;
       align-items: center !important;
   }
+}
+
+.cure-shortcuts-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  justify-content: center;
 }
 
 /* --- PILL RESTRAINT --- */
@@ -409,13 +419,13 @@
 }
 
 .cure-shortcuts-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   width: 100%;
-  max-width: 440px;
+  max-width: 500px;
   margin: 0 auto;
-  justify-content: center; /* Always centered regardless of count */
+  justify-content: center;
 }
 
 /* Red Pop-out Notification (Replaces Toast) */
@@ -494,18 +504,18 @@
 .cure-shortcut-card {
   background: #ffffff;
   border: 1px solid #e5e5ea;
-  padding: 12px 24px;
+  padding: 12px 20px;
   border-radius: 16px;
   text-decoration: none;
   color: #1d1d1f;
   font-weight: 600;
-  font-size: 17px;
+  font-size: 16px;
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   animation: pulse-subtle 3s infinite ease-in-out;
 }
 
@@ -562,16 +572,20 @@
 }
 
 .cure-shortcut-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   object-fit: contain;
 }
 
 .cure-shortcut-name {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   color: #1d1d1f;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cure-btn-unlock {

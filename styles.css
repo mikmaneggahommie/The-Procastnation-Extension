@@ -1798,6 +1798,31 @@ input[type="number"]::-webkit-outer-spin-button {
   cursor: pointer;
   transition: all 0.2s;
   border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.cure-modal-btn.secondary {
+  background: #f2f2f7;
+  color: #1d1d1f;
+  margin-top: 8px;
+}
+
+.cure-modal-btn.secondary:hover {
+  background: #e5e5ea;
+}
+
+.cure-modal-btn-row {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.cure-modal-btn-row .cure-modal-btn {
+  margin-top: 0;
+  flex: 1;
 }
 
 .cure-modal-btn.primary {
@@ -1827,4 +1852,17 @@ input[type="number"]::-webkit-outer-spin-button {
 @keyframes scaleIn {
   from { transform: scale(0.9); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+/* --- UNSAVED CHANGES NUDGE (Refined) --- */
+.needs-save {
+  box-shadow: 0 0 0 2px #1d1d1f !important;
+  transition: box-shadow 0.3s ease;
+}
+
+
+@keyframes pulse-save {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.02); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 1; }
 }

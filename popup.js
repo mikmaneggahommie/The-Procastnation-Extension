@@ -1,6 +1,8 @@
 // Cure Procrastination - Clean Logic + Help
 
 let currentSettings = null;
+let isDirty = false;
+let backAttemptCount = 0;
 
 document.addEventListener('DOMContentLoaded', async () => {
     await loadSettings();
@@ -87,6 +89,53 @@ function saveSettings() {
     if (masterRemind) currentSettings.masterReminders = masterRemind.checked;
 
     chrome.runtime.sendMessage({ action: 'updateSettings', settings: currentSettings });
+    resetDirty();
+}
+
+function markDirty() {
+    isDirty = true;
+    backAttemptCount = 0;
+    // Highlight save buttons
+    document.querySelectorAll('[id^="save-"]').forEach(btn => {
+        if (!btn.id.includes('status')) btn.classList.add('needs-save');
+    });
+}
+
+function resetDirty() {
+    isDirty = false;
+    backAttemptCount = 0;
+    document.querySelectorAll('[id^="save-"]').forEach(btn => {
+        btn.classList.remove('needs-save', 'shake');
+    });
+}
+
+
+function showConfirmDialog(title, msg, onSave, onDiscard) {
+    const modal = document.getElementById('confirm-modal');
+    if (!modal) return;
+
+    modal.querySelector('.confirm-title').textContent = title;
+    modal.querySelector('.confirm-message').textContent = msg;
+    
+    const saveBtn = document.getElementById('confirm-save-btn');
+    const discardBtn = document.getElementById('confirm-discard-btn');
+
+    modal.style.display = 'flex';
+
+    saveBtn.onclick = () => {
+        modal.style.display = 'none';
+        onSave();
+    };
+
+    discardBtn.onclick = () => {
+        modal.style.display = 'none';
+        onDiscard();
+    };
+
+    // Close on background click (Optional: behavior usually forces action)
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.style.display = 'none';
+    };
 }
 
 /**
@@ -564,11 +613,41 @@ function setupListeners() {
 
     document.querySelectorAll('.nav-back').forEach(el => {
         el.addEventListener('click', () => {
-            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-            document.getElementById('home-view').classList.add('active');
-            updateUIState(); // Re-sync
+            if (isDirty) {
+                // Find visible save button in current view
+                const currentView = el.closest('.view');
+                const saveBtn = currentView?.querySelector('[id^="save-"]');
+                // if (saveBtn) shakeButton(saveBtn); // Shake removed per user request
+
+                showConfirmDialog(
+                    "Unsaved Changes",
+                    "Do you want to save your progress before leaving?",
+                    () => {
+                        // SAVE & EXIT
+                        if (saveBtn) saveBtn.click();
+                        else {
+                            saveSettings();
+                            resetDirty();
+                            goHome();
+                        }
+                    },
+                    () => {
+                        // DISCARD
+                        resetDirty();
+                        goHome();
+                    }
+                );
+                return;
+            }
+            goHome();
         });
     });
+
+    function goHome() {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('home-view').classList.add('active');
+        updateUIState(); // Re-sync
+    }
 
     // --- LIST SEARCH LISTENERS ---
     function toggleAddCard(e) {
@@ -618,6 +697,7 @@ function setupListeners() {
             });
 
             // saveSettings(); // REMOVED: No auto-save on masters
+            markDirty();
             updateUIState();
             
             // Only show indicator for home-screen master toggles
@@ -838,6 +918,7 @@ function setupListeners() {
     // Listeners for UI state (non-None toggles)
     ['proto-typing-enable', 'proto-password-enable', 'proto-delay-enable', 'proto-passive-enable'].forEach(id => {
         document.getElementById(id)?.addEventListener('change', (e) => {
+            markDirty();
             updateUIState();
             // showSavedIndicator removed to avoid redundancy
         });
@@ -849,6 +930,7 @@ function setupListeners() {
     // --- TRIGGER TOGGLES ---
     ['trigger-session-enable', 'trigger-browser-enable', 'trigger-launch-enable'].forEach(id => {
         document.getElementById(id)?.addEventListener('change', (e) => {
+            markDirty();
             updateUIState();
             // showSavedIndicator removed to avoid redundancy
         });
@@ -856,6 +938,7 @@ function setupListeners() {
 
     // --- GENERAL TOGGLES ---
     document.getElementById('pill-enable-input')?.addEventListener('change', (e) => {
+        markDirty();
         updateUIState();
         // showSavedIndicator removed to avoid redundancy
     });
@@ -876,8 +959,8 @@ function setupListeners() {
     validationInputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.addEventListener('change', updateUIState);
-            el.addEventListener('input', updateUIState);
+            el.addEventListener('change', () => { markDirty(); updateUIState(); });
+            el.addEventListener('input', () => { markDirty(); updateUIState(); });
         }
     });
 
@@ -1065,9 +1148,31 @@ function setupListeners() {
 
             if (v && !currentSettings.whitelist.includes(v)) {
                 currentSettings.whitelist.push(v);
-                // saveSettings(); // REMOVED: Buffer changes
+                markDirty();
                 renderWhitelist();
                 document.getElementById('new-site-input').value = '';
+            }
+        });
+    }
+
+    const addBlockBtn = document.getElementById('add-block-btn');
+    if (addBlockBtn) {
+        addBlockBtn.addEventListener('click', () => {
+            let v = document.getElementById('new-block-input').value.trim().toLowerCase();
+            if (!v) return;
+
+            // Basic Sanitization: Strip protocol and path
+            try {
+                if (v.includes('://')) v = v.split('://')[1];
+                v = v.split('/')[0];
+                v = v.replace(/^www\./, '');
+            } catch (e) { }
+
+            if (v && !currentSettings.blacklist.includes(v)) {
+                currentSettings.blacklist.push(v);
+                markDirty();
+                renderBlocklist();
+                document.getElementById('new-block-input').value = '';
             }
         });
     }
@@ -1083,7 +1188,7 @@ function setupListeners() {
             const u = document.getElementById('new-shortcut-url').value.trim();
             if (n && u) {
                 currentSettings.shortcuts.push({ name: n, url: u });
-                // saveSettings(); // REMOVED: Buffer changes
+                markDirty();
                 renderShortcuts();
                 document.getElementById('new-shortcut-name').value = '';
                 document.getElementById('new-shortcut-url').value = '';
@@ -1098,7 +1203,7 @@ function setupListeners() {
             if (e.target.dataset.type === 'whitelist') currentSettings.whitelist.splice(idx, 1);
             if (e.target.dataset.type === 'blacklist') currentSettings.blacklist.splice(idx, 1);
             if (e.target.dataset.type === 'shortcut') currentSettings.shortcuts.splice(idx, 1);
-            // saveSettings(); // REMOVED: Buffer changes
+            markDirty();
             renderAll();
         }
     });
