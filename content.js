@@ -1814,8 +1814,9 @@ class CureVault {
             // Special case: If we are currently showing a block overlay but it's now "Safe", remove it instantly
             const root = this.ensureShadow();
             const hasOverlay = root && root.getElementById(this.overlayId);
+            const reminderActive = localStorage.getItem('cure_reminder_active') === '1';
 
-            if (hasOverlay && !hardLockEffective && !pauseEffective) {
+            if (hasOverlay && !hardLockEffective && !pauseEffective && !reminderActive) {
                 this.safeSendMessage({ action: 'getLockState', hostname: window.location.hostname }, (res) => {
                     if (!res || !res.locked) {
                         this.removeOverlay();
