@@ -2553,7 +2553,7 @@ class CureVault {
         }).join('');
 
         const shortcutsSection = shortcuts ? `
-            <div class="cure-shortcuts-container" style="margin-top:0px;">
+            <div class="cure-shortcuts-container" style="margin-top:6px;">
                 <div class="cure-shortcuts-label">Productive Alternatives</div>
                 <div class="cure-hand-pointer">👇</div>
                 <div class="cure-shortcuts-row">${shortcuts}</div>
@@ -2573,7 +2573,7 @@ class CureVault {
                 ${shortcutsSection}
 
                 <div style="margin-top: 30px; text-align: center;">
-                    <p style="color:#1D1D1F; font-size:18px; font-weight: 500; margin-bottom: 24px;">
+                    <p style="color:#86868B; font-size:18px; font-weight: 500; margin-bottom: 24px;">
                         Are you being productive, or just scrolling?
                     </p>
                     <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto;">
