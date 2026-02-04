@@ -2785,7 +2785,8 @@ class CureVault {
                 <div class="cure-shortcuts-row">${shortcuts}</div>
             </div>
 
-            <div class="cure-action-wrapper" style="margin: 0;">
+            <div class="cure-action-wrapper" style="margin: 0; flex-direction: column; gap: 12px;">
+                <div class="cure-shortcuts-label" style="font-size: 18px;">Continue to ${new URL(window.location.href).hostname}</div>
                 <button id="cure-continue-btn" class="cure-btn-unlock counting" style="margin:0 auto;">
                     <div id="cure-progress-fill" class="cure-progress-fill-anim"></div>
                     <span id="cure-btn-text" class="cure-btn-content">Readying...</span>
