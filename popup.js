@@ -62,7 +62,7 @@ function autoFillCurrentSite() {
             }
 
             if (sName) sName.value = cleanTitle;
-            if (sUrl) sUrl.value = urlObj.origin; // https://example.com
+            if (sUrl) sUrl.value = domain; // Just domain (e.g., arena.ai) clean and consistent
 
         } catch (e) {
             console.log('Cannot parse URL for auto-fill');
@@ -162,8 +162,6 @@ function isValidDomain(domain) {
     return domainRegex.test(domain);
 }
 
-    return domainRegex.test(domain);
-}
 
 function sanitizeDomainInput(input) {
     if (!input) return '';
@@ -650,7 +648,18 @@ function renderShortcuts(filter = '') {
         const h3 = document.createElement('h3');
         h3.textContent = s.name;
         const p = document.createElement('p');
-        p.textContent = s.url;
+        
+        // VISUAL CLEANUP: Strip protocol and www for display consistency
+        let displayUrl = s.url;
+        try {
+            displayUrl = displayUrl.replace(/^https?:\/\//, '').replace(/^www\./, '');
+            // Optional: Remove trailing slash if it's the only Thing
+             if (displayUrl.endsWith('/') && displayUrl.indexOf('/') === displayUrl.length - 1) {
+                displayUrl = displayUrl.slice(0, -1);
+             }
+        } catch (e) {}
+        
+        p.textContent = displayUrl;
         leftDiv.appendChild(h3);
         leftDiv.appendChild(p);
 
@@ -742,9 +751,12 @@ function setupListeners() {
                         }
                     },
                     () => {
-                        // DISCARD
-                        resetDirty();
-                        goHome();
+                        // DISCARD: Reload saved settings AND re-render all lists
+                        loadSettings().then(() => {
+                            renderAll(); // CRITICAL: Re-render UI with reverted data
+                            resetDirty();
+                            goHome();
+                        });
                     }
                 );
                 return;
@@ -1249,12 +1261,8 @@ function setupListeners() {
             let v = document.getElementById('new-site-input').value.trim().toLowerCase();
             if (!v) return;
 
-            // Basic Sanitization: Strip protocol and path
-            try {
-                if (v.includes('://')) v = v.split('://')[1];
-                v = v.split('/')[0];
-                v = v.replace(/^www\./, '');
-            } catch (e) { }
+            // ROBUST SANITIZATION
+            v = sanitizeDomainInput(v);
 
             // STRICT VALIDATION
             if (!isValidDomain(v)) {
@@ -1268,7 +1276,7 @@ function setupListeners() {
                 renderWhitelist();
                 document.getElementById('new-site-input').value = '';
             } else if (currentSettings.whitelist.includes(v)) {
-                 showCustomAlert("Duplicate Entry", "This site is already in your allowlist.");
+                 showCustomAlert("Duplicate Entry", "This site is already on your list.");
             }
         });
     }
@@ -1279,16 +1287,12 @@ function setupListeners() {
             let v = document.getElementById('new-block-input').value.trim().toLowerCase();
             if (!v) return;
 
-            // Basic Sanitization: Strip protocol and path
-            try {
-                if (v.includes('://')) v = v.split('://')[1];
-                v = v.split('/')[0];
-                v = v.replace(/^www\./, '');
-            } catch (e) { }
+            // ROBUST SANITIZATION
+            v = sanitizeDomainInput(v);
 
              // STRICT VALIDATION
             if (!isValidDomain(v)) {
-                showCustomAlert("Invalid Domain", "Please enter a valid domain (e.g., example.com).");
+                showCustomAlert("Invalid Domain", "Please enter a valid domain (e.g., example.com). Phone numbers and text are not allowed.");
                 return;
             }
 
@@ -1298,20 +1302,40 @@ function setupListeners() {
                 renderBlocklist();
                 document.getElementById('new-block-input').value = '';
             } else if (currentSettings.blacklist.includes(v)) {
-                showCustomAlert("Duplicate Entry", "This site is already blocked.");
+                showCustomAlert("Duplicate Entry", "This site is already on your list.");
             }
         });
+    }
+
+    // Auto-clean shortcut input on blur/input/paste
+    const shortcutInput = document.getElementById('new-shortcut-url');
+    if (shortcutInput) {
+        const cleanup = () => {
+             let val = shortcutInput.value.trim();
+            if (val) {
+                val = val.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+                shortcutInput.value = val;
+            }
+        };
+        shortcutInput.addEventListener('blur', cleanup);
+        shortcutInput.addEventListener('input', cleanup);
+        shortcutInput.addEventListener('paste', () => setTimeout(cleanup, 10));
     }
 
     const addShortcutBtn = document.getElementById('add-shortcut-btn');
     if (addShortcutBtn) {
         addShortcutBtn.addEventListener('click', () => {
             if ((currentSettings.shortcuts || []).length >= 6) {
-                showCustomAlert("Limit Reached", "You can't do that. The max is 6 shortcut apps.");
+                showCustomAlert("Limit Reached", "Maximum of 6 shortcuts allowed. Please remove one before adding another.");
                 return;
             }
             const n = document.getElementById('new-shortcut-name').value.trim();
-            const u = document.getElementById('new-shortcut-url').value.trim();
+            let u = document.getElementById('new-shortcut-url').value.trim();
+            
+            // SMART URL FIX: If missing protocol, assume https://
+            if (u && !/^https?:\/\//i.test(u)) {
+                u = 'https://' + u;
+            }
             
             if (!n) {
                 showCustomAlert("Missing Name", "Please enter a name for the shortcut.");
@@ -1321,6 +1345,12 @@ function setupListeners() {
             if (!isValidUrl(u)) {
                 showCustomAlert("Invalid URL", "Please enter a full valid URL (e.g., https://youtube.com).");
                 return;
+            }
+
+            // DUPLICATE CHECK
+            if (currentSettings.shortcuts.some(s => s.url === u)) {
+                 showCustomAlert("Duplicate Entry", "This shortcut is already on your list.");
+                 return;
             }
 
             currentSettings.shortcuts.push({ name: n, url: u });

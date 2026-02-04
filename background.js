@@ -93,7 +93,7 @@ const DEFAULT_SETTINGS = {
     blacklist: [],
     shortcuts: [
         { name: 'Gmail', url: 'https://mail.google.com' },
-        { name: 'Notion', url: 'https://notion.so' }
+        { name: 'Notion', url: 'https://notion.com' }
     ],
     breathingRoomDuration: 15,
     sessionTimeoutMins: 30, // Reset session index if away for 30 min
