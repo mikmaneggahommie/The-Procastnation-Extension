@@ -2577,8 +2577,8 @@ class CureVault {
                     <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin: 0 auto;">
                         Are you being productive, or just scrolling?
                     </p>
-                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto; height: 56px;">
-                        Continue Wasting Time (Unlock)
+                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto;">
+                        <span class="cure-btn-content">Continue Wasting Time (Unlock)</span>
                     </button>
                 </div>
             </div>
@@ -2689,8 +2689,8 @@ class CureVault {
                 </div>
 
                 <div style="margin-top: 0px;">
-                     <button id="cure-unlock-decision-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; height: 56px;">
-                        Continue Wasting Time (Unlock)
+                     <button id="cure-unlock-decision-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none;">
+                        <span class="cure-btn-content">Continue Wasting Time (Unlock)</span>
                      </button>
                 </div>
             </div>
@@ -2789,7 +2789,7 @@ class CureVault {
                 <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin: 0 auto;">
                     Are you being productive, or just scrolling?
                 </p>
-                <button id="cure-continue-btn" class="cure-btn-unlock counting" style="margin:0 auto; height: 56px;">
+                <button id="cure-continue-btn" class="cure-btn-unlock counting" style="margin:0 auto;">
                     <div id="cure-progress-fill" class="cure-progress-fill-anim"></div>
                     <span id="cure-btn-text" class="cure-btn-content">Readying...</span>
                 </button>
@@ -3136,8 +3136,8 @@ class CureVault {
                     <textarea id="cure-input" class="cure-typing-input" placeholder="Start typing here..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
                     
                     <div class="cure-shortcuts-container" style="margin-top: 12px;">
-                        <button id="cure-give-up-btn" class="cure-btn-unlock cure-anim-pulse-black" style="background:#1d1d1f; border: none; color:#ffffff; font-size:16px; padding:16px 32px; height:56px; border-radius: 12px; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-weight:600;">
-                            I'd rather be productive
+                        <button id="cure-give-up-btn" class="cure-btn-unlock cure-anim-pulse-black" style="background:#1d1d1f; border: none; color:#ffffff; width: 100%;">
+                            <span class="cure-btn-content">I'd rather be productive</span>
                         </button>
                     </div>
                 </div>
@@ -3373,7 +3373,9 @@ class CureVault {
                 </div>
 
                 <div class="cure-action-wrapper">
-                    <button id="cure-finished-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; height: 56px;">Continue to Site</button>
+                    <button id="cure-finished-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none;">
+                        <span class="cure-btn-content">Continue to Site</span>
+                    </button>
                 </div>
             </div>
             `;

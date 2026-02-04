@@ -602,6 +602,7 @@
   cursor: pointer;
   min-width: 320px; /* Standardized width for consistency */
   box-sizing: border-box;
+  margin: 0 auto;
   height: 56px;
   /* FIXED HEIGHT */
   transition: all 0.2s ease;
