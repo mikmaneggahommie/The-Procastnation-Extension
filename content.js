@@ -2577,7 +2577,7 @@ class CureVault {
                     <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin: 0 auto;">
                         Are you being productive, or just scrolling?
                     </p>
-                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto;">
+                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto; height: 56px;">
                         Continue Wasting Time (Unlock)
                     </button>
                 </div>
@@ -2689,7 +2689,7 @@ class CureVault {
                 </div>
 
                 <div style="margin-top: 0px;">
-                     <button id="cure-unlock-decision-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none;">
+                     <button id="cure-unlock-decision-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; height: 56px;">
                         Continue Wasting Time (Unlock)
                      </button>
                 </div>
@@ -2789,7 +2789,7 @@ class CureVault {
                 <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin: 0 auto;">
                     Are you being productive, or just scrolling?
                 </p>
-                <button id="cure-continue-btn" class="cure-btn-unlock counting" style="margin:0 auto;">
+                <button id="cure-continue-btn" class="cure-btn-unlock counting" style="margin:0 auto; height: 56px;">
                     <div id="cure-progress-fill" class="cure-progress-fill-anim"></div>
                     <span id="cure-btn-text" class="cure-btn-content">Readying...</span>
                 </button>
@@ -3357,7 +3357,7 @@ class CureVault {
             : `You have unlocked <b style="color:#1D1D1F;">${mins}min</b>.<br>The clock is ticking backwards now.`;
 
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="padding-top: 65px;">
+            <div class="cure-overlay-container" style="padding-top: 70px;">
                 <div class="cure-header">
                     <div style="font-size:42px; margin-bottom:4px;">${isAutoClose ? '✨' : '🔓'}</div>
                     <h1 class="cure-title-large">${isAutoClose ? 'Task Complete' : 'Strict Lock Lifted'}</h1>
