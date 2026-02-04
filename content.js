@@ -2574,7 +2574,7 @@ class CureVault {
                 ${shortcutsSection}
 
                 <div style="margin-top: 30px; text-align: center;">
-                    <p style="color:#86868B; font-size:18px; font-weight: 500; margin-bottom: 24px;">
+                    <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin-bottom: 24px;">
                         Are you being productive, or just scrolling?
                     </p>
                     <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto;">
@@ -2779,14 +2779,14 @@ class CureVault {
             <p class="cure-subtitle" style="margin-top: 4px; color: #86868B;">${message}</p>
             <p class="cure-quote-medium" style="margin-top: 12px;">"${quote}"</p>
             
-            <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 20px;">
+            <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 30px;">
                 <div class="cure-shortcuts-label">Productive Alternatives</div>
                 <div class="cure-hand-pointer">👇</div>
                 <div class="cure-shortcuts-row">${shortcuts}</div>
             </div>
 
-            <div class="cure-action-wrapper" style="margin: 0; flex-direction: column; gap: 12px;">
-                <p style="color:#86868B; font-size:18px; font-weight: 500; margin: 0 auto;">
+            <div class="cure-action-wrapper" style="margin: 0; flex-direction: column; gap: 24px;">
+                <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin: 0 auto;">
                     Are you being productive, or just scrolling?
                 </p>
                 <button id="cure-continue-btn" class="cure-btn-unlock counting" style="margin:0 auto;">
