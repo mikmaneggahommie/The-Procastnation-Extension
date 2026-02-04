@@ -2578,7 +2578,7 @@ class CureVault {
                         Are you being productive, or just scrolling?
                     </p>
                     <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto;">
-                        Continue Wasting Time
+                        Continue Wasting Time (Unlock)
                     </button>
                 </div>
             </div>
