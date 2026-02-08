@@ -1145,7 +1145,8 @@ class CureVault {
                 const rTriggers = this.settings.reminderTriggers || {};
                 const rStyle = this.settings.reminderStyle || 'overlay';
                 
-                // Browser Limit
+                // 1. Daily Screen Time (Browser Limit)
+                let globalTriggered = false;
                 if (rTriggers.browserLimit?.enabled && launchRes.browserSeconds) {
                     const limitSecs = rTriggers.browserLimit.value * 60;
                     const rType = this.settings.reminderBrowserType || 'once';
@@ -1181,6 +1182,23 @@ class CureVault {
                         } else if (!force) {
                             this.showToast(`⌛ Browser Screen Time: ${minsSpent}m spent`, 'reminder');
                         }
+                        globalTriggered = true;
+                    }
+                }
+
+                // 2. Launch Count Reminder (Visit Limit)
+                if (!globalTriggered && rTriggers.launchLimit?.enabled && launchRes.currentLaunches >= rTriggers.launchLimit.value) {
+                    const limit = rTriggers.launchLimit.value;
+                    const hasShown = sessionStorage.getItem(`cure_remind_launch_shown_${limit}`);
+
+                    if (!hasShown) {
+                        if (rStyle === 'overlay') {
+                            this.renderReminderOverlay(launchRes.currentLaunches, 'launch');
+                            MediaController.pauseAll();
+                        } else if (!force) {
+                            this.showToast(`🚀 Visit Limit: ${launchRes.currentLaunches} launches`, 'reminder');
+                        }
+                        sessionStorage.setItem(`cure_remind_launch_shown_${limit}`, '1');
                     }
                 }
             });
