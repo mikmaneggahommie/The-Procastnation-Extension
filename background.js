@@ -439,15 +439,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
                 }
 
-                // 2. Start new session if needed
-                if (!currentSessionActive && config.enabled) {
+                // 2. Start new session OR record explicit new visit (Launch)
+                // FIX 158: Intuitive Launch. If isNewVisit is true, we always record it.
+                if (config.enabled && (!currentSessionActive || request.isNewVisit)) {
                     // NOTE: For hard-lock triggers, we ALWAYS use the config window
                     const hardLockWindowMs = (config.windowSeconds || 3600) * 1000;
                     siteStats.launches = (siteStats.launches || []).filter(ts => now - ts < hardLockWindowMs);
 
                     if (siteStats.launches.length < config.value) {
+                        // Only push if this is actually a new visit or a fresh session start
                         siteStats.launches.push(now);
-                        siteStats.activeSession = { startTime: now, lastActive: now };
+                        if (!siteStats.activeSession) {
+                            siteStats.activeSession = { startTime: now, lastActive: now };
+                        }
                         siteStats.lastActiveAt = now;
                         currentSessionActive = true;
                     } else {

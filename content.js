@@ -1143,7 +1143,12 @@ class CureVault {
         // FIX 154: Increase check frequency to 10s for better accuracy on transitions
         if (!this.isIframe && (force || (this.activeSeconds % 10 === 0 && deltaSecs >= 1))) {
             const launchWindow = (this.settings.reminderTriggers?.launchLimit?.windowSeconds) || 3600;
-            this.safeSendMessage({ action: 'trackLaunch', hostname: window.location.hostname, windowSeconds: launchWindow }, (launchRes) => {
+            this.safeSendMessage({ 
+                action: 'trackLaunch', 
+                hostname: window.location.hostname, 
+                windowSeconds: launchWindow,
+                isNewVisit: false // FIX 158: Periodic checks are NOT new visits
+            }, (launchRes) => {
                 if (!launchRes) return;
                 const rTriggers = this.settings.reminderTriggers || {};
                 const rStyle = this.settings.reminderStyle || 'overlay';
@@ -1252,6 +1257,13 @@ class CureVault {
     }
 
     _continueTriggerEvaluation(resolve = null) {
+        // FIX 158: Detect Intuitive Launch (Fresh Visit)
+        // We count every new tab/window as a launch, but ignore refreshes on the same tab.
+        const isNewVisit = !this.isIframe && !sessionStorage.getItem('cure_launch_counted');
+        if (isNewVisit) {
+            sessionStorage.setItem('cure_launch_counted', '1');
+        }
+
         const outerResolve = resolve;
         return new Promise(resolve => {
             const finalResolve = (val) => {
@@ -1367,7 +1379,8 @@ class CureVault {
                     // ALSO Fetch/Verify Launch Status for complete evaluation
                     this.safeSendMessage({ 
                         action: 'trackLaunch', 
-                        hostname: window.location.hostname 
+                        hostname: window.location.hostname,
+                        isNewVisit: isNewVisit // FIX 158: Report fresh visit if detected
                     }, (launchRes) => {
                         const combined = { ...(res || {}), ...(launchRes || {}) };
                         const response = combined; // Rename for consistency with original code
