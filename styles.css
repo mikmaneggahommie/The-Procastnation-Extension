@@ -270,8 +270,8 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 4px;
-  /* Reduced gap further */
+  gap: 2px 4px;
+  /* Reduced gap significantly */
   font-size: 14px;
   color: #1d1d1f;
   line-height: 1.6;
@@ -312,8 +312,7 @@ body {
 
 .sentence-row .config-number-input {
   text-align: center;
-  min-width: 32px;
-  max-width: 60px;
+  width: 48px;
   padding: 0 4px;
   height: 24px;
   border: 1px solid #d1d1d6;
@@ -655,16 +654,14 @@ select.clean-input {
 }
 
 .unit-selector {
-  border: 1px solid #e5e5ea;
-  /* Subtle border for visibility */
+  border: 1px solid #e5e5ea; /* Subtle border for visibility */
   background: #f2f2f7;
-  padding: 4px 10px;
+  padding: 4px 6px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   color: #1d1d1f;
   cursor: pointer;
-  margin-left: 8px;
   outline: none;
 }
 

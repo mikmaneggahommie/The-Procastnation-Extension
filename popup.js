@@ -549,15 +549,20 @@ function populateInputs() {
     setChk('pause-whitelist-enable', !!currentSettings.pauseWhitelist);
 
     // Reminders View Inputs
+    setChk('reminder-interval-enable', !!currentSettings.reminderIntervalEnabled);
+    setVal('reminder-interval-type', currentSettings.reminderIntervalType || 'repeating');
     setConvertedVal('reminder-input', 'reminder-unit', reminders);
     setChk('reminder-whitelist-enable', !!currentSettings.reminderWhitelist);
+
+    setVal('reminder-browser-type', currentSettings.reminderBrowserType || 'once');
 
     // Reminder Triggers
     setChk('reminder-trigger-launch-enable', reminderTriggers.launchLimit?.enabled);
     setVal('reminder-trigger-launch-val', reminderTriggers.launchLimit?.value || 5);
+    setVal('reminder-trigger-launch-window', reminderTriggers.launchLimit?.windowSeconds || 3600);
 
     setChk('reminder-trigger-browser-enable', reminderTriggers.browserLimit?.enabled);
-    setVal('reminder-trigger-browser-val', reminderTriggers.browserLimit?.value || 120);
+    setConvertedVal('reminder-trigger-browser-val', 'reminder-trigger-browser-unit', (reminderTriggers.browserLimit?.value || 120) * 60);
 
     const styleSelect = document.getElementById('reminder-style-input');
     if (styleSelect) styleSelect.value = rStyle;
@@ -844,9 +849,9 @@ function setupListeners() {
         'pause-screentime-trigger': { title: 'Screen Time Trigger', text: 'Automatically triggers the Pause Screen after you spend a certain amount of time browsing today.', icon: '⏱️' },
         'pause-allowlist': { title: 'Enable on Allowlist', text: 'By default, "productive" allowlisted sites skip the pause screen. Turn this on if you want to be paused on those sites too.', icon: '✅' },
         
-        'reminder-interval': { title: 'Reminder Interval', text: 'How often the extension will show you a "productive check-in" reminding you of your time spent.', icon: '⏳' },
-        'reminder-style': { title: 'Visual Style', text: 'Choose "Overlay" for a full-screen interrupt or "Toast" for a subtle notification at the bottom.', icon: '🎨' },
-        'reminder-screentime-trigger': { title: 'Screen Time Reminder', text: 'Get a specific alert when your total daily browsing time hits this limit.', icon: '🛑' },
+        'reminder-interval': { title: 'Site Activity Reminder', text: 'Alerts based specifically on how long you have been on the current website. You can set this to repeat every X minutes, or fire just once as a "one-off" alarm.', icon: '⏳' },
+        'reminder-style': { title: 'Appearance', text: 'Choose "Overlay" for a full-screen interrupt or "Toast" for a subtle notification at the bottom.', icon: '🎨' },
+        'reminder-screentime-trigger': { title: 'Screen Time Reminder', text: 'Get an alert when your total browsing time today hits a certain limit. Now supports repeating alerts if you want to be reminded multiple times.', icon: '🛑' },
         'reminder-launch-trigger': { title: 'Launch Count Reminder', text: 'Get a specific alert when you visit sites too frequently (e.g. 10 times in an hour).', icon: '🚀' },
         'reminder-allowlist': { title: 'Enable on Allowlist', text: 'By default, allowlisted sites do not trigger reminders. Turn this on to get reminders even on productive sites.', icon: '✅' },
 
@@ -1116,6 +1121,7 @@ function setupListeners() {
     const unitPairs = [
         ['breathing-input', 'breathing-unit'],
         ['reminder-input', 'reminder-unit'],
+        ['reminder-trigger-browser-val', 'reminder-trigger-browser-unit'],
         ['hardlock-input', 'hardlock-unit'],
         ['browser-limit-input', 'browser-limit-unit'],
         ['unlock-reward-input', 'unlock-reward-unit'],
@@ -1653,7 +1659,18 @@ function setupNewViewListeners() {
 
     // SAVE REMINDERS SETTINGS
     document.getElementById('save-reminders-btn')?.addEventListener('click', () => {
+        currentSettings.reminderIntervalEnabled = document.getElementById('reminder-interval-enable').checked;
+        currentSettings.reminderIntervalType = document.getElementById('reminder-interval-type').value;
+        currentSettings.reminderBrowserType = document.getElementById('reminder-browser-type').value;
         currentSettings.reminderInterval = Math.floor(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 15;
+        
+        // Convert Browser Limit to minutes for background/content logic
+        const browserLimitSecs = getConvertedVal('reminder-trigger-browser-val', 'reminder-trigger-browser-unit');
+        if (!currentSettings.reminderTriggers) currentSettings.reminderTriggers = {};
+        if (!currentSettings.reminderTriggers.browserLimit) currentSettings.reminderTriggers.browserLimit = { enabled: true, value: 120 };
+        currentSettings.reminderTriggers.browserLimit.value = Math.floor(browserLimitSecs / 60) || 120;
+        currentSettings.reminderTriggers.browserLimit.enabled = document.getElementById('reminder-trigger-browser-enable').checked;
+
         currentSettings.reminderStyle = document.getElementById('reminder-style-input').value;
         currentSettings.reminderWhitelist = document.getElementById('reminder-whitelist-enable').checked;
 
@@ -1661,7 +1678,7 @@ function setupNewViewListeners() {
             launchLimit: {
                 enabled: document.getElementById('reminder-trigger-launch-enable').checked,
                 value: parseInt(document.getElementById('reminder-trigger-launch-val').value) || 5,
-                windowSeconds: 3600
+                windowSeconds: parseInt(document.getElementById('reminder-trigger-launch-window').value) || 3600
             },
             browserLimit: {
                 enabled: document.getElementById('reminder-trigger-browser-enable').checked,
@@ -1719,11 +1736,21 @@ function setupNewViewListeners() {
 
 
     // Listeners for new toggles to update UI state
-    ['pause-trigger-launch-enable', 'pause-trigger-browser-enable', 'reminder-trigger-launch-enable', 'reminder-trigger-browser-enable'].forEach(id => {
+    ['pause-trigger-launch-enable', 'pause-trigger-browser-enable', 'reminder-trigger-launch-enable', 'reminder-trigger-browser-enable', 'reminder-interval-enable'].forEach(id => {
         document.getElementById(id)?.addEventListener('change', (e) => {
+            markDirty();
             if (window.triggerProtocolUIUpdate) window.triggerProtocolUIUpdate();
             // showSavedIndicator removed to avoid redundancy
         });
+    });
+
+    // Additional listeners for Reminders inputs to ensure dirty state
+    ['reminder-interval-type', 'reminder-browser-type', 'reminder-input', 'reminder-unit', 'reminder-trigger-browser-val', 'reminder-trigger-browser-unit', 'reminder-trigger-launch-val', 'reminder-trigger-launch-window', 'reminder-style-input', 'reminder-whitelist-enable'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            const eventType = (el.type === 'number' || el.type === 'text') ? 'input' : 'change';
+            el.addEventListener(eventType, () => markDirty());
+        }
     });
 
     // CONSISTENT SAVE BUTTONS FOR NEW VIEWS
@@ -1833,6 +1860,7 @@ function updateUIState() {
     toggleSub('pause-trigger-browser-enable', 'config-pause-trigger-browser');
     toggleSub('reminder-trigger-browser-enable', 'config-reminder-trigger-browser');
     toggleSub('reminder-trigger-launch-enable', 'config-reminder-trigger-launch');
+    toggleSub('reminder-interval-enable', 'config-reminder-interval');
     toggleSub('pill-enable-input', 'config-pill-whitelist');
 
     // 3. Specialized Logic (None Mode, Rewards, Typing)

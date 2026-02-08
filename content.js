@@ -90,7 +90,7 @@ const MediaController = {
     interval: null,
     observer: null,
     isActive: false, // FIX: Global Kill Switch Flag
-    enforcedElements: new Map(), // Use Map to store { muted, volume }
+    enforcedElements: new Set(), // Use Set for pause-only enforcement
     handleMediaEvent(e) {
         // FIX: Global Kill Switch.
         // If enforcement is stopped, ignore this event completely.
@@ -100,8 +100,6 @@ const MediaController = {
         const el = e.target;
         try {
             if (!el.paused) el.pause();
-            el.muted = true;
-            el.volume = 0;
         } catch (err) { /* Ignore */ }
     },
     // FIX: Performance Optimization. 
@@ -122,22 +120,17 @@ const MediaController = {
     enforceElement(el) {
         try {
             if (!this.enforcedElements.has(el)) {
-                this.enforcedElements.set(el, {
-                    muted: el.muted,
-                    volume: el.volume
-                });
+                this.enforcedElements.add(el);
                 el.addEventListener('play', this.handleMediaEvent);
                 el.addEventListener('playing', this.handleMediaEvent);
             }
             if (!el.paused) el.pause();
-            el.muted = true;
-            el.volume = 0;
         } catch (e) { /* Ignore */ }
     },
     pauseAll() {
         this.findMediaDeep().forEach(el => this.enforceElement(el));
     },
-    startEnforcement() {
+    startEnforcement(force = false) {
         this.isActive = true; // Enable Flag
         if (this.interval) clearInterval(this.interval);
         if (this.observer) this.observer.disconnect();
@@ -147,7 +140,7 @@ const MediaController = {
         const isWhitelisted = vault && vault.isWhitelisted();
         const isBlacklisted = vault && vault.isBlacklisted();
 
-        if (isWhitelisted || (!isBlacklisted && !isInterventionActive)) return;
+        if (!force && (isWhitelisted || (!isBlacklisted && !isInterventionActive))) return;
 
         // 1. Initial Sweep
         this.pauseAll();
@@ -173,9 +166,8 @@ const MediaController = {
         // 3. Low-Frequency Fail-safe (2000ms)
         // Only checks already known elements.
         this.interval = setInterval(() => {
-            this.enforcedElements.forEach((_, el) => {
+            this.enforcedElements.forEach((el) => {
                 if (!el.paused) el.pause();
-                el.muted = true;
             });
             // FIX: Removed expensive random full-page scan. 
             // We rely on MutationObserver for new elements.
@@ -193,12 +185,10 @@ const MediaController = {
             this.observer = null;
         }
         // Restore state
-        this.enforcedElements.forEach((original, el) => {
+        this.enforcedElements.forEach((el) => {
             try {
                 el.removeEventListener('play', this.handleMediaEvent);
                 el.removeEventListener('playing', this.handleMediaEvent);
-                el.muted = original.muted;
-                el.volume = original.volume;
                 // FIX: Aggressive cleanup
                 el.onplay = null;
                 el.onplaying = null;
@@ -606,6 +596,17 @@ class CureVault {
             if (request.locked) {
                 this.tabLevelLockActive = true;
                 MediaController.startEnforcement();
+                
+                // FIX 132: Render Overlay in Iframes (Visual Feedback)
+                // If this specific iframe matches the locked hostname, show the lock screen.
+                // Otherwise (embedded on another site), just pause media (Strict Lock behavior).
+                if (this.isIframe) {
+                    const myHost = window.location.hostname.replace(/^www\./, '');
+                    const lockedHost = request.hostname?.replace(/^www\./, '');
+                    if (myHost === lockedHost) {
+                        this.renderIframeBlocked(this.ensureShadow(), 'limit');
+                    }
+                }
             } else {
                 this.tabLevelLockActive = false;
                 MediaController.stopEnforcement();
@@ -621,6 +622,60 @@ class CureVault {
                 this._toastDebounce = false;
                 this.removeOverlay();
                 MediaController.stopEnforcement();
+                if (!this.isIframe) {
+                    this.stateMonitor();
+                }
+            }
+            return;
+        }
+
+        // FIX: Universal Media Kill Switch
+        // Allows the main tab to pause ALL media in ALL frames (regardless of origin)
+        if (request.action === 'tabMediaAction') {
+            if (request.type === 'pause') {
+                MediaController.startEnforcement(true); // Force enforcement
+            } else {
+                MediaController.stopEnforcement();
+            }
+            return;
+        }
+
+        // FIX 128: Cross-Tab Reminder Broadcast
+        // FIX 129: Extended to handle iframes properly
+        // When a reminder is triggered on one tab, show it on ALL tabs/iframes of the same hostname
+        if (request.action === 'forceReminderOverlay') {
+            if (request.hostname === window.location.hostname.replace(/^www\./, '')) {
+                // Only show if not already showing a reminder
+                if (sessionStorage.getItem('cure_reminder_active') !== '1') {
+                    sessionStorage.setItem('cure_reminder_active', '1');
+                    
+                    if (this.isIframe) {
+                        // FIX 141: Pass metadata for rich UI even on broadcasted reminders
+                        this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
+                            value: request.value,
+                            timeLabel: `${request.value}`,
+                            timeUnit: request.type === 'browser' ? 'minutes total' : 'minutes spent',
+                            title: request.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
+                        });
+                    } else {
+                        this.renderReminderOverlay(request.value, request.type, true);
+                    }
+                }
+            }
+            return;
+        }
+
+        // FIX 128: Cross-Tab Reminder Dismissal
+        // FIX 129: Extended to handle iframes properly
+        if (request.action === 'dismissReminderOverlay') {
+            if (request.hostname === window.location.hostname.replace(/^www\./, '')) {
+                sessionStorage.removeItem('cure_reminder_active');
+                
+                // FIX 129: Stop media enforcement for iframes
+                MediaController.stopEnforcement();
+                
+                this.removeOverlay();
+                document.body.style.overflow = '';
                 if (!this.isIframe) {
                     this.stateMonitor();
                 }
@@ -651,6 +706,10 @@ class CureVault {
             this.settings = newSettings;
 
             const newWhitelisted = this.isWhitelisted();
+
+            // FIX: Reactive Reminder Re-evaluation
+            // If the user just changed settings (e.g. lowered a threshold), check if we trigger immediately.
+            this.checkReminders(0, true);
 
             // SUPPRESS OVERLAY: If we just whitelisted or turned OFF strict lock, 
             // the user almost certainly doesn't want to see a Breathing Room immediately.
@@ -807,6 +866,17 @@ class CureVault {
     shouldShowPill() {
         if (!this.stateInitialized) return false;
         if (this.activeIntervention) return false;
+
+        if (this.isIframe) {
+            // FIX 137: Relaxed Nesting Check (Removed)
+            // We rely purely on "Smart Visibility" (Fix 140) now.
+            // If an iframe (nested or not) is actually playing video/audio, 
+            // we show the pill. If it's just a wrapper (no media), activeSeconds stays 0 => Hidden.
+            
+            // FIX 140: Smart Visibility
+            // Only show pill if we have actually tracked some time (video started).
+            if (this.activeSeconds < 1) return false;
+        }
         
         const root = this.shadowRoot;
         if (root && root.getElementById(this.overlayId)) return false;
@@ -815,9 +885,6 @@ class CureVault {
         const showPillSetting = this.settings.showTimerPill !== false;
         const canShowOnWhitelist = !isWhitelisted || this.settings.showPillOnWhitelist === true;
 
-        // Fix 71: Previously we suppressed on all blacklisted sites. 
-        // Now we ONLY suppress if it's currently being actively blocked (intervention active).
-        // This allows the pill to show on blacklisted sites DURING reward time.
         return showPillSetting && canShowOnWhitelist;
     }
 
@@ -922,7 +989,29 @@ class CureVault {
             }
         });
 
-        // 2. Listen for Broadcasts (Dynamic Locking/Unlocking)
+        // 3. FIX 129: Check for active reminder state immediately
+        // Query background to see if a reminder is active for this hostname
+        this.safeSendMessage({
+            action: 'getReminderState',
+            hostname: window.location.hostname
+        }, (response) => {
+            if (response && response.active) {
+                sessionStorage.setItem('cure_reminder_active', '1');
+                if (this.isIframe) {
+                    // FIX 141: Rich Iframe UI on init
+                    this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
+                        value: response.value,
+                        timeLabel: `${response.value}`,
+                        timeUnit: response.type === 'browser' ? 'minutes total' : 'minutes spent',
+                        title: response.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
+                    });
+                } else {
+                    this.renderReminderOverlay(response.value, response.type, true);
+                }
+            }
+        });
+
+        // 4. Listen for Broadcasts (Dynamic Locking/Unlocking)
         // FIX: Removed duplicate onMessage listener. 
         // The main CureVault.handleUpdate already handles 'broadcastLockState' 
         // (via forceMediaPause) and 'challengeCompleted'.
@@ -958,8 +1047,12 @@ class CureVault {
         } catch (e) { /* Ignore setup errors */ }
         
         // FIX 86: Branch for Iframe logic
+        // FIX 86: Branch for Iframe logic
         if (this.isIframe) {
-            return this.initIframe();
+            // FIX 131: Enable Tracking for Iframes
+            // We run initIframe() to do the fast initial checks (reminders, locks),
+            // but we NO LONGER return. We proceed to full init() so stateMonitor starts tracking usage.
+            this.initIframe();
         }
 
         // AGGRESSIVE CLEANUP: Remove ANY existing shadow hosts (Zombie Pills) from old/orphaned scripts
@@ -1000,7 +1093,98 @@ class CureVault {
 
         this.stateMonitor();
         this.forceRefreshUI();
+    }
 
+    /**
+     * Re-evaluates reminders against current usage stats.
+     * @param {number} deltaSecs Seconds passed since last check
+     * @param {boolean} force If true, triggers even if a threshold was already crossed (greedy check)
+     */
+    checkReminders(deltaSecs = 0, force = false) {
+        if (!this.isContextValid()) return;
+        const remindersOn = (this.settings || {}).masterReminders !== false;
+        if (!remindersOn) return;
+        
+        const isWhitelisted = this.isWhitelisted();
+        const allowWhite = !!this.settings.reminderWhitelist;
+        if (isWhitelisted && !allowWhite) return;
+
+        // 1. Site Activity Reminder
+        if (this.settings.reminderIntervalEnabled !== false) {
+            let rInt = (this.settings.reminderInterval || 15) * 60;
+            if (rInt < 60) rInt = 60;
+
+            const prev = this.activeSeconds - deltaSecs;
+            const crossed = Math.floor(prev / rInt) < Math.floor(this.activeSeconds / rInt);
+            const greedy = force && this.activeSeconds >= rInt;
+
+            if (this.mode === 'up' && this.activeSeconds > 0 && (crossed || greedy)) {
+                const rType = this.settings.reminderIntervalType || 'repeating';
+                const hasShown = sessionStorage.getItem('cure_remind_interval_shown');
+
+                if (rType === 'repeating' || !hasShown) {
+                    const mins = Math.floor(this.activeSeconds / 60);
+                    const rStyle = this.settings.reminderStyle || 'overlay';
+                    if (rStyle === 'overlay') {
+                        this.renderReminderOverlay(mins, 'time');
+                        MediaController.pauseAll();
+                    } else if (!force) {
+                        const site = this.getSiteName();
+                        this.showToast(`⏰ ${site} Activity: ${mins}m spent`, 'reminder');
+                    }
+                    if (rType === 'once') sessionStorage.setItem('cure_remind_interval_shown', '1');
+                }
+            }
+        }
+
+        // 2. Global Reminders (Only for main tab)
+        if (!this.isIframe && (force || (this.activeSeconds % 30 === 0 && deltaSecs >= 1))) {
+            const launchWindow = (this.settings.reminderTriggers?.launchLimit?.windowSeconds) || 3600;
+            this.safeSendMessage({ action: 'trackLaunch', hostname: window.location.hostname, windowSeconds: launchWindow }, (launchRes) => {
+                if (!launchRes) return;
+                const rTriggers = this.settings.reminderTriggers || {};
+                const rStyle = this.settings.reminderStyle || 'overlay';
+                
+                // Browser Limit
+                if (rTriggers.browserLimit?.enabled && launchRes.browserSeconds) {
+                    const limitSecs = rTriggers.browserLimit.value * 60;
+                    const rType = this.settings.reminderBrowserType || 'once';
+                    let shouldTrigger = false;
+                    const minsSpent = Math.floor(launchRes.browserSeconds / 60);
+                    const globalDismissed = launchRes.globalDismissals?.[`cure_global_remind_dismissed_browser_${minsSpent}`];
+
+                    if (!globalDismissed) {
+                        const greedy = force && launchRes.browserSeconds >= limitSecs;
+                        if (rType === 'once') {
+                            const hasShown = sessionStorage.getItem('cure_remind_browser_shown');
+                            if ((launchRes.browserSeconds >= limitSecs && !hasShown) || (greedy && !hasShown)) {
+                                shouldTrigger = true;
+                                sessionStorage.setItem('cure_remind_browser_shown', '1');
+                            }
+                        } else {
+                            const crossed = Math.floor(launchRes.browserSeconds % limitSecs) < 30;
+                            if (crossed || greedy) {
+                                const lastRepeat = sessionStorage.getItem('cure_remind_browser_last');
+                                const currentBucket = Math.floor(launchRes.browserSeconds / limitSecs);
+                                if (lastRepeat !== currentBucket.toString()) {
+                                    shouldTrigger = true;
+                                    sessionStorage.setItem('cure_remind_browser_last', currentBucket.toString());
+                                }
+                            }
+                        }
+                    }
+
+                    if (shouldTrigger) {
+                        if (rStyle === 'overlay') {
+                            this.renderReminderOverlay(minsSpent, 'browser');
+                            MediaController.pauseAll();
+                        } else if (!force) {
+                            this.showToast(`⌛ Browser Screen Time: ${minsSpent}m spent`, 'reminder');
+                        }
+                    }
+                }
+            });
+        }
     }
 
     /**
@@ -1063,7 +1247,29 @@ class CureVault {
                     this.removeOverlay();
                     return resolve();
                 }
-            // FIX 81: Verify reward time is still valid before restoring unlock protection.
+
+                // FIX 142: Sync Reminder State across new tabs (for Main Tabs and Iframes)
+                // This handles the "open new tab while blocked" case
+                this.safeSendMessage({
+                    action: 'getReminderState',
+                    hostname: window.location.hostname
+                }, (reminderRes) => {
+                    if (reminderRes && reminderRes.active) {
+                        sessionStorage.setItem('cure_reminder_active', '1');
+                        if (this.isIframe) {
+                            this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
+                                value: reminderRes.value,
+                                timeLabel: `${reminderRes.value}`,
+                                timeUnit: reminderRes.type === 'browser' ? 'minutes total' : 'minutes spent',
+                                title: reminderRes.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
+                            });
+                        } else {
+                            this.renderReminderOverlay(reminderRes.value, reminderRes.type, true);
+                        }
+                    }
+                });
+
+                // FIX 81: Verify reward time is still valid before restoring unlock protection.
             // If the background says unlocked but reward time is consumed, clear it.
             if (lockResponse && lockResponse.unlocked === true) {
                 const rewardSecondsGranted = this.originalRewardSeconds || 0;
@@ -1148,11 +1354,17 @@ class CureVault {
                         // Update our local windowed logic with ground truth from background
                         if (response) {
                             this.windowedSiteSeconds = response.siteSeconds || 0;
+                            // FIX 135: Sync Timer UI with Global Stats
+                            // If we accrued time in an iframe/other tab, update our local counter to match.
+                            if (this.mode === 'up') {
+                                this.activeSeconds = this.windowedSiteSeconds;
+                            }
                             this.windowedBrowserSeconds = response.browserSeconds || 0;
                         }
 
                         const triggerReason = this.checkAnyTrigger();
                         if (triggerReason) {
+                            sessionStorage.removeItem('cure_reminder_active'); // FIX: Wipe reminder state on lock
                             localStorage.removeItem('cure_reminder_active');
                             this.stateHardLock(triggerReason === true ? null : triggerReason);
                             return resolve();
@@ -1160,10 +1372,16 @@ class CureVault {
 
                         // 3. Check Reminder State
                         const masterRemindersOn = this.settings.masterReminders !== false;
-                        const reminderActive = localStorage.getItem('cure_reminder_active') === '1';
+                        
+                        // FIX: Aggressive cleanup of legacy localStorage state that causes "0 min" ghost reminders
+                        if (localStorage.getItem('cure_reminder_active')) {
+                            localStorage.removeItem('cure_reminder_active');
+                        }
+
+                        const reminderActive = sessionStorage.getItem('cure_reminder_active') === '1';
 
                         if (!masterRemindersOn && reminderActive) {
-                            localStorage.removeItem('cure_reminder_active');
+                            sessionStorage.removeItem('cure_reminder_active');
                             this.removeOverlay();
                         }
 
@@ -1174,10 +1392,15 @@ class CureVault {
                             
                             if (!isWhitelisted || allowOnWhitelist) {
                                 const mins = Math.floor(this.activeSeconds / 60);
-                                this.renderReminderOverlay(mins);
+                                // FIX: Guard against "0 min" reminders on initial load
+                                if (mins > 0) {
+                                    this.renderReminderOverlay(mins);
+                                } else {
+                                    sessionStorage.removeItem('cure_reminder_active');
+                                }
                             } else {
                                 // Whitelisted and setting is off - clear the reminder state
-                                localStorage.removeItem('cure_reminder_active');
+                                sessionStorage.removeItem('cure_reminder_active');
                             }
                             return resolve();
                         }
@@ -1709,17 +1932,39 @@ class CureVault {
      * The heartbeat of the extension. Tracks time and enforces limits.
      * Reactive: Dynamically adapts to whitelist/settings changes without restarting.
      */
+    // FIX 139: Smart Media Check
+    checkIfPlaying() {
+        const media = document.querySelectorAll('video, audio');
+        for (const m of media) {
+             // Removed readyState check to be more responsive to "Play" clicks even if buffering
+             if (!m.paused && !m.ended) return true;
+        }
+        return false;
+    }
+
     stateMonitor() {
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
 
+        // FIX 133: Initialize tracking baseline immediately. 
+        // Previously relied on delta logic which could stall at 0 if starting focused.
+        this.lastTickTime = performance.now();
+
         const runTick = () => {
             if (document.hidden) {
                 this.lastTickTime = performance.now(); // Reset baseline when hidden
                 return;
             }
+
+            // FIX 139: Smart Iframe Tracking
+            // Only track time if video is ACTUALLY playing.
+            if (this.isIframe && !this.checkIfPlaying()) {
+                 this.lastTickTime = performance.now(); // Reset baseline to prevent jumps
+                 return;
+            }
+
             // Calculate precise delta using monotonic clock
             const nowTick = performance.now();
             const deltaMs = nowTick - (this.lastTickTime || nowTick);
@@ -1814,7 +2059,7 @@ class CureVault {
             // Special case: If we are currently showing a block overlay but it's now "Safe", remove it instantly
             const root = this.ensureShadow();
             const hasOverlay = root && root.getElementById(this.overlayId);
-            const reminderActive = localStorage.getItem('cure_reminder_active') === '1';
+            const reminderActive = sessionStorage.getItem('cure_reminder_active') === '1';
 
             if (hasOverlay && !hardLockEffective && !pauseEffective && !reminderActive) {
                 this.safeSendMessage({ action: 'getLockState', hostname: window.location.hostname }, (res) => {
@@ -1841,70 +2086,7 @@ class CureVault {
             }
 
             // --- FOCUS REMINDERS ---
-            const remindersOn = (this.settings || {}).masterReminders !== false;
-            if (remindersOn && deltaSecs >= 1) {
-                let rInt = (this.settings.reminderInterval || 15) * 60;
-                if (rInt < 60) rInt = 60;
-
-                if (this.mode === 'up' && this.activeSeconds > 0 && this.activeSeconds % rInt === 0) {
-                    const mins = Math.floor(this.activeSeconds / 60);
-                    const rStyle = this.settings.reminderStyle || 'overlay';
-                    const allowWhite = !!this.settings.reminderWhitelist;
-
-                    if (!isWhitelisted || allowWhite) {
-                        if (rStyle === 'overlay') {
-                            this.renderReminderOverlay(mins, 'time');
-                            MediaController.pauseAll();
-                        } else {
-                            const site = this.getSiteName();
-                            this.showToast(`${site}: ${mins}m ⚠️`, 'warning');
-                        }
-                    }
-                }
-
-                // Global Reminders check (Browser/Launch)
-                if (this.activeSeconds % 30 === 0 && this.isContextValid()) {
-                    this.safeSendMessage({ action: 'trackLaunch', hostname: window.location.hostname }, (launchRes) => {
-                        if (!launchRes) return;
-                        const rTriggers = this.settings.reminderTriggers || {};
-                        const rStyle = this.settings.reminderStyle || 'overlay';
-                        
-                        // Reminders for Browser Limit
-                        if (rTriggers.browserLimit?.enabled && launchRes.browserSeconds) {
-                            const limitSecs = rTriggers.browserLimit.value * 60;
-                            const hasShown = sessionStorage.getItem('cure_remind_browser_shown');
-                            if (launchRes.browserSeconds >= limitSecs && !hasShown) {
-                                if (isWhitelisted && !this.settings.reminderWhitelist) return;
-
-                                if (rStyle === 'overlay') {
-                                    this.renderReminderOverlay(Math.floor(launchRes.browserSeconds / 60), 'browser');
-                                    MediaController.pauseAll();
-                                } else {
-                                    this.showToast('Daily Limit! ⚠️', 'warning');
-                                }
-                                sessionStorage.setItem('cure_remind_browser_shown', '1');
-                            }
-                        }
-
-                        // Reminders for Launch Limit
-                        if (rTriggers.launchLimit?.enabled && launchRes.currentLaunches) {
-                            const limit = rTriggers.launchLimit.value;
-                            const hasShown = sessionStorage.getItem('cure_remind_launch_shown');
-                            if (launchRes.currentLaunches >= limit && !hasShown) {
-                                if (isWhitelisted && !this.settings.reminderWhitelist) return;
-
-                                if (rStyle === 'overlay') {
-                                    this.renderReminderOverlay(launchRes.currentLaunches, 'launch');
-                                    MediaController.pauseAll();
-                                } else {
-                                    this.showToast('Visit Limit! ⚠️', 'warning');
-                                }
-                                sessionStorage.setItem('cure_remind_launch_shown', '1');
-                            }
-                        }
-                    });
-                }
-            }
+            this.checkReminders(deltaSecs);
         };
 
         this.lastTickTime = performance.now();
@@ -2099,15 +2281,32 @@ class CureVault {
         if (!root.getElementById('cure-pulse-style-final')) {
             const style = document.createElement('style');
             style.id = 'cure-pulse-style-final';
-            // FIX: Trusted Types compatibility (use textContent)
             style.textContent = `
                 @keyframes cure-pulse-nuclear {
                     0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); transform: translateX(-50%) scale(1); }
                     70% { box-shadow: 0 0 0 15px rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1.02); }
                     100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1); }
                 }
+                @keyframes cure-pulse-soft {
+                    0% { transform: translateX(-50%) scale(1); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+                    50% { transform: translateX(-50%) scale(1.01); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+                    100% { transform: translateX(-50%) scale(1); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+                }
             `;
             root.appendChild(style);
+        }
+
+        let bgColor = '#007AFF'; // info
+        let animation = 'none';
+
+        if (type === 'warning' || type === 'error') {
+            bgColor = '#FF3B30';
+            animation = 'cure-pulse-nuclear 2s infinite';
+        } else if (type === 'reminder') {
+            bgColor = '#1D1D1F';
+            animation = 'cure-pulse-soft 3s infinite';
+        } else if (type === 'success') {
+            bgColor = '#34C759';
         }
 
         popout.style.cssText = `
@@ -2115,23 +2314,23 @@ class CureVault {
             bottom: 35px;
             left: 50%;
             transform: translateX(-50%);
-            background: ${ (type === 'warning' || type === 'error') ? '#FF3B30' : '#007AFF' };
+            background: ${bgColor};
             color: white;
-            padding: 8px 16px;
+            padding: 10px 20px;
             border-radius: 50px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             z-index: 2147483647;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             opacity: 0; 
             transition: opacity 0.3s ease, transform 0.3s ease;
             white-space: nowrap;
             pointer-events: auto;
-            animation: cure-pulse-nuclear 2s infinite;
+            animation: ${animation};
         `;
 
 
@@ -2272,7 +2471,7 @@ class CureVault {
         MediaController.stopEnforcement();
     }
 
-    renderIframeBlocked(root, reason = null) {
+    renderIframeBlocked(root, reason = null, metadata = {}) {
         if (!root) return;
         
         // FIX: Re-render Guard for Iframes.
@@ -2297,7 +2496,7 @@ class CureVault {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(245, 245, 247, 0.98); 
             backdrop-filter: blur(10px);
-            z-index: 2147483648;
+            z-index: 2147483647;
             pointer-events: auto;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -2306,26 +2505,79 @@ class CureVault {
         `;
         
         // Reason-based labels
-        let label = "Session Limit Reached";
+        let label = metadata.title || "Session Limit Reached";
+        let subText = metadata.subtitle || (reason === 'reminder' ? 'Time for a break?' : 'Complete challenge in new tab to unlock');
+        let emoji = metadata.emoji || (reason === 'reminder' ? '⏰' : '🔒');
+        let btnText = metadata.continueText || (reason === 'reminder' ? 'Continue Watching' : 'Unlock →');
+        
         if (reason === 'blocked') label = "Site Blocked";
-        else if (reason === 'launchLimit') label = "Launch Limit Reached";
-        else if (reason === 'browserLimit') label = "Browser Limit Reached";
+        else if (reason === 'launchLimit' && !metadata.title) label = "Launch Limit Reached";
+        else if (reason === 'browserLimit' && !metadata.title) label = "Browser Limit Reached";
         else if (reason === 'pause') label = "Take a Breath";
+        
+        // Custom Rich UI for Reminder (Big Red Timer)
+        let contentHtml = '';
+        if (reason === 'reminder' && metadata.timeLabel) {
+             contentHtml = `
+                 <div style="font-size: min(40px, 8vw); margin-bottom: 4px;">${emoji}</div>
+                 <div style="font-size: min(18px, 5vw); font-weight: 700;">${label}</div>
+                 <div style="font-size: min(12px, 3.5vw); opacity: 0.8; margin-bottom: 8px; max-width: 80%; line-height: 1.3;">${subText}</div>
+                 
+                 <div class="cure-pulse-timer" style="font-size: min(32px, 10vw); font-weight: 800; color: #FF3B30; line-height: 1;">
+                     ${metadata.timeLabel}
+                 </div>
+                 <div style="font-size: min(12px, 3.5vw); font-weight: 500; opacity: 0.6; margin-bottom: 12px;">
+                     ${metadata.timeUnit || 'minutes spent'}
+                 </div>
+                 
+                 <style>
+                    @keyframes cure-pulsate {
+                        0% { transform: scale(1); opacity: 1; }
+                        50% { transform: scale(1.05); opacity: 0.9; }
+                        100% { transform: scale(1); opacity: 1; }
+                    }
+                    .cure-pulse-timer {
+                        animation: cure-pulsate 2s infinite ease-in-out;
+                    }
+                    @media (min-height: 350px) {
+                        #cure-iframe-alts { display: flex !important; }
+                    }
+                 </style>
+                 <!-- Alternatives Placeholder (populated if space allows) -->
+                 <div id="cure-iframe-alts" style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; display: none;"></div>
+             `;
+        } else {
+            // Standard Lock/Block UI - Upgraded to match Rich Style
+            contentHtml = `
+                <div style="font-size: min(40px, 10vw); margin-bottom: 8px;">${emoji}</div>
+                <div style="font-size: min(18px, 5vw); font-weight: 700; line-height: 1.2; padding: 0 5px;">${label}</div>
+                <div style="font-size: min(12px, 3.5vw); opacity: 0.8; margin-top: 4px; max-width: 80%; line-height: 1.3;">${subText}</div>
+                
+                <div class="cure-iframe-hide-small" style="font-size: 11px; opacity: 0.6; margin-top: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
+                    ${this.dailySeconds > 0 ? Math.floor(this.dailySeconds / 60) + 'm used today' : ''}
+                </div>
+                <style>
+                    @media (max-height: 150px) {
+                        .cure-iframe-hide-small { display: none !important; }
+                    }
+                </style>
+            `;
+        }
         
         overlay.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%;">
-                <div style="font-size: min(40px, 10vw); margin-bottom: 8px;">🔒</div>
-                <div style="font-size: min(16px, 4vw); font-weight: 700; line-height: 1.2; padding: 0 5px;">${label}</div>
-                <div class="cure-iframe-hide-small" style="font-size: 11px; opacity: 0.6; margin-top: 6px;">Complete challenge in new tab to unlock</div>
-                <button id="cure-iframe-unlock-btn" style="
-                    margin-top: 12px; font-size: min(13px, 3.5vw); color: #ffffff;
-                    font-weight: 600; background: #1d1d1f; padding: 8px 16px; border-radius: 12px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.15); border: none; cursor: pointer;
+                ${contentHtml}
+                <button id="cure-iframe-unlock-btn" data-reason="${reason}" style="
+                    margin-top: 12px; font-size: min(13px, 3.5vw); color: #86868B;
+                    font-weight: 600; background: transparent; padding: 10px 20px; border-radius: 12px;
+                    box-shadow: none; border: 2px solid #E5E5EA; cursor: pointer;
                     transition: all 0.2s ease;
-                ">Unlock →</button>
+                ">${btnText}</button>
                 <style>
-                    @media (max-height: 120px) {
-                        .cure-iframe-hide-small { display: none !important; }
+                    #cure-iframe-unlock-btn:hover {
+                        background: #f5f5f7 !important;
+                        border-color: #d1d1d6 !important;
+                        color: #1d1d1f !important;
                     }
                 </style>
             </div>
@@ -2333,11 +2585,48 @@ class CureVault {
         
         root.appendChild(overlay);
         
+        // Alternatives Logic (Inject if Reminder)
+        if (reason === 'reminder' && this.settings.shortcuts) {
+            const altsParams = overlay.querySelector('#cure-iframe-alts');
+            if (altsParams) {
+                // Take first 3 shortcuts
+                this.settings.shortcuts.slice(0, 3).forEach(s => {
+                     const btn = document.createElement('a');
+                     btn.href = s.url;
+                     btn.target = "_blank";
+                     btn.style.cssText = "display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: white; border-radius: 8px; text-decoration: none; color: #1d1d1f; font-size: 11px; font-weight: 600; box-shadow: 0 2px 5px rgba(0,0,0,0.05);";
+                     
+                     let iconUrl = this.getFaviconUrl(s.url);
+                     let name = s.name;
+                     if (!name) { try { name = new URL(s.url).hostname.replace('www.',''); } catch(e){ name = 'Link'; } }
+                     
+                     btn.innerHTML = `<img src="${iconUrl}" style="width:14px;height:14px;border-radius:3px;"> ${name}`;
+                     altsParams.appendChild(btn);
+                });
+            }
+        }
+        
         const btn = overlay.querySelector('#cure-iframe-unlock-btn');
         if (btn) {
             btn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+
+                const btnReason = btn.dataset.reason;
+
+                // FIX 129: For reminders, allow direct dismissal from iframe
+                // This broadcasts the dismissal to all tabs (including this iframe)
+                if (btnReason === 'reminder') {
+                    this.safeSendMessage({
+                        action: 'broadcastReminderState',
+                        hostname: window.location.hostname,
+                        show: false
+                    });
+                    // Optimistically unblock immediately (handler will also catch it)
+                    MediaController.stopEnforcement();
+                    this.removeOverlay();
+                    return;
+                }
 
                 const originalText = btn.innerText;
                 btn.innerText = "Challenge Active in New Tab...";
@@ -2375,11 +2664,14 @@ class CureVault {
         const pill = document.createElement('div');
         pill.id = this.pillId;
         pill.innerHTML = `<span style="font-size:14px;">⏳</span> <span id="cure-time-text">0min 00sec</span>`;
+        if (this.isIframe) pill.classList.add('cure-iframe-pill');
         root.appendChild(pill);
     }
 
     updatePill() {
-        if (window.self !== window.top || !this.stateInitialized) return;
+        if (!this.stateInitialized) return;
+        // FIX 134: Allow iframes to update pill
+        // if (window.self !== window.top ...
 
         // Authority: Check visibility logic before doing ANY rendering
         if (!this.shouldShowPill()) {
@@ -2492,10 +2784,14 @@ class CureVault {
         // These are mindfulness prompts for when you first visit a site - irrelevant for embedded content.
         // Only hard lock (mode === 'locked') is meaningful for iframes.
         if (this.isIframe) {
-            if (mode === 'locked') {
-                this.renderIframeBlocked(this.ensureShadow(), 'limit');
-            }
-            return;
+             // FIX 131: Generalized Iframe Blocking
+             // Any blocking mode (locked, reminder, etc) should use the simplified UI
+             if (mode === 'locked' || mode === 'reminder') {
+                 // Map reason. If mode is locked, use provided reason or 'limit'.
+                 const reason = (mode === 'reminder') ? 'reminder' : 'limit';
+                 this.renderIframeBlocked(this.ensureShadow(), reason);
+             }
+             return;
         }
         
         this.activeIntervention = mode;
@@ -2541,19 +2837,39 @@ class CureVault {
     }
 
     renderReminderOverlay(value, type = 'time', forced = false) {
-        // FIX 100: Reminders are not relevant for iframes - just silently skip
-        if (this.isIframe && !forced) return;
+        // NUCLEAR SAFEGUARD: If we ever try to show a "0 min" site reminder, self-destruct.
+        if (type === 'time' && value <= 0 && !forced) {
+            console.log('[Cure] Suppressing 0-min ghost reminder overlay.');
+            sessionStorage.removeItem('cure_reminder_active');
+            return;
+        }
 
+        let emoji = "⏰";
+        let title = "Productivity Check";
         let timeLabel = `${value}`;
-        let timeUnit = 'mins.';
-        let contextText = "You've been here for";
+        let timeUnit = 'minutes spent';
+        const site = this.getSiteName();
+        let subtitle = `You've been active on ${site} for a while.`;
+        let continueText = "Continue Browsing (Unlock Site)";
 
         if (type === 'browser') {
-            contextText = "Daily browsing limit reached";
-            timeUnit = 'mins.';
+            emoji = "⌛";
+            title = "Daily Screen Time";
+            timeLabel = `${value}`;
+            timeUnit = 'minutes total';
+            subtitle = `You've reached your browser-wide screen time reminder.`;
+            continueText = "Acknowledge & Continue";
         } else if (type === 'launch') {
-            contextText = "Visit limit reached";
-            timeUnit = 'visits.';
+            emoji = "🚀";
+            title = "Visit Limit Reached";
+            timeLabel = `${value}`;
+            timeUnit = 'recent launches';
+            subtitle = `You've opened social/media sites frequently this hour.`;
+            continueText = "Acknowledge & Continue";
+        } else {
+            // Default: 'time' (Site Activity)
+            title = "Reminder";
+            subtitle = `You've spent ${value} minutes on ${site}.`;
         }
 
         if (this.timerInterval) {
@@ -2565,8 +2881,30 @@ class CureVault {
             try { SoundEngine.playChime('warning'); } catch (e) { }
         }
 
-        localStorage.setItem('cure_reminder_active', '1');
-        this.renderOverlay('breathing', contextText, forced);
+        sessionStorage.setItem('cure_reminder_active', '1');
+
+        // FIX 128/142: Broadcast reminder to ALL tabs of this hostname
+        // Critical: We do this BEFORE the iframe check so the Main Tab gets the message!
+        if (!forced) {
+            this.safeSendMessage({
+                action: 'broadcastReminderState',
+                hostname: window.location.hostname,
+                show: true,
+                value: value,
+                type: type
+            });
+        }
+
+        if (this.isIframe) {
+            // FIX 141: Rich Iframe UI
+            // Pass full metadata so iframe can render a matching UI
+            this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
+                emoji, title, timeLabel, timeUnit, subtitle, continueText, value 
+            });
+            return;
+        }
+
+        this.renderOverlay('breathing', subtitle, forced); // FIX: Replace undefined contextText with subtitle
 
         if (!this.shadowRoot) return;
         const overlay = this.shadowRoot.getElementById(this.overlayId);
@@ -2598,10 +2936,10 @@ class CureVault {
         overlay.innerHTML = `
             <div class="cure-overlay-container">
                 <div class="cure-header" style="margin-bottom:0px;">
-                    <div style="font-size:42px; margin-bottom:4px;">⏰</div>
-                    <h1 class="cure-title-large">Productivity Check</h1>
-                    <p class="cure-subtitle">${contextText}</p>
-                    <p class="cure-anim-pulse" style="font-size:32px; font-weight:700; color:#FF3B30; margin:16px 0;">${timeLabel}</p>
+                    <div style="font-size:48px; margin-bottom:8px;">${emoji}</div>
+                    <h1 class="cure-title-large">${title}</h1>
+                    <p class="cure-subtitle" style="margin-bottom:8px;">${subtitle}</p>
+                    <p class="cure-anim-pulse" style="font-size:32px; font-weight:700; color:#FF3B30; margin:12px 0;">${timeLabel}</p>
                     <p class="cure-subtitle" style="margin:0;">${timeUnit}</p>
                 </div>
 
@@ -2611,8 +2949,8 @@ class CureVault {
                     <p style="color:#6B6B6F; font-size:16px; font-weight: 400; margin: 0 auto;">
                         Are you being productive, or just scrolling?
                     </p>
-                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto;">
-                        <span class="cure-btn-content">Continue Wasting Time (Unlock)</span>
+                    <button id="cure-reminder-continue-btn" class="cure-btn-unlock" style="background:transparent; border: 2px solid #E5E5EA; color:#86868B; box-shadow:none; margin: 0 auto; width: 100%; max-width: 400px; padding: 16px 24px;">
+                        <span class="cure-btn-content">${continueText}</span>
                     </button>
                 </div>
             </div>
@@ -2621,7 +2959,26 @@ class CureVault {
         const btn = this.shadowRoot.getElementById('cure-reminder-continue-btn');
         if (btn) {
             btn.onclick = () => {
-                localStorage.removeItem('cure_reminder_active');
+                sessionStorage.removeItem('cure_reminder_active');
+                
+                // FIX 128: Broadcast dismissal to ALL tabs of this hostname
+                this.safeSendMessage({
+                    action: 'broadcastReminderState',
+                    hostname: window.location.hostname,
+                    show: false
+                });
+                
+                // If this is a global reminder (browser/launch), notify background to dismiss it for ALL tabs
+                if (type === 'browser' || type === 'launch') {
+                    const bucket = type === 'browser' ? value : value; // or current bucket logic
+                    this.safeSendMessage({ 
+                        action: 'sessionStorageProxy', 
+                        op: 'set', 
+                        key: `cure_global_remind_dismissed_${type}_${value}`, 
+                        value: true 
+                    });
+                }
+
                 this.removeOverlay();
                 document.body.style.overflow = '';
                 this.stateMonitor();
@@ -2711,7 +3068,11 @@ class CureVault {
                 <div class="cure-header" style="margin-bottom: 16px;">
                     <div style="font-size:42px; margin-bottom:10px;">${emoji}</div>
                     <h1 class="cure-title-large">${title}</h1>
-                    <p class="cure-subtitle">${subtitle}</p>
+                    <p class="cure-subtitle" style="margin-bottom: 8px;">${subtitle}</p>
+                    ${this.dailySeconds > 0 ? `
+                        <p class="cure-anim-pulse" style="font-size:32px; font-weight:700; color:#FF3B30; margin:12px 0;">${Math.floor(this.dailySeconds / 60)}</p>
+                        <p class="cure-subtitle" style="margin:0;">minutes spent today</p>
+                    ` : ''}
                 </div>
 
                 <div class="cure-shortcuts-container" style="margin-top: 32px; margin-bottom: 40px;">
@@ -2883,10 +3244,10 @@ class CureVault {
 
     renderGodMode(overlay) {
         overlay.innerHTML = `
-            <div class="cure-overlay-container" style="justify-content: flex-start; padding-top: 100px;">
-                <div style="font-size:80px; margin-bottom:20px;">⛔</div>
+            <div class="cure-overlay-container" style="justify-content: flex-start;">
+                <div style="font-size:48px; margin-bottom:12px;">⛔</div>
                 <h1 class="cure-title-large">Locked Until Reset</h1>
-                <p class="cure-subtitle" style="margin-top:10px; max-width:400px; text-align:center;">
+                <p class="cure-subtitle" style="margin-top:4px; max-width:400px;">
                     You chose "None" mode. There is no way to unlock this site until your session resets tomorrow.
                 </p>
                 <div style="margin-top:30px; font-weight:600; color:#FF3B30; font-size:18px;">
@@ -2915,9 +3276,9 @@ class CureVault {
 
         overlay.innerHTML = `
             <div class="cure-overlay-container" style="justify-content: flex-start;">
-                <div style="font-size:60px; margin-bottom:16px;">⏳</div>
+                <div style="font-size:48px; margin-bottom:12px;">⏳</div>
                 <h1 class="cure-title-large">Patience is Key</h1>
-                <p class="cure-subtitle" style="margin-top:8px; margin-bottom:30px;">You must wait before attempting to unlock.</p>
+                <p class="cure-subtitle" style="margin-top:4px; margin-bottom:30px;">You must wait before attempting to unlock.</p>
                 
                 <!-- Circular Timer -->
                 <div style="position:relative; width:160px; height:160px; margin: 0 auto 30px auto;">
@@ -2928,7 +3289,7 @@ class CureVault {
                                 style="transition: stroke-dashoffset 1s linear;"></circle>
                     </svg>
                     <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; padding: 0 10px;">
-                        <span id="cure-delay-timer" style="font-size:24px; font-weight:700; color:#1D1D1F; font-variant-numeric: tabular-nums; text-align: center; line-height: 1.2;">--:--</span>
+                        <span id="cure-delay-timer" class="cure-anim-pulse" style="font-size:24px; font-weight:700; color:#FF3B30; font-variant-numeric: tabular-nums; text-align: center; line-height: 1.2;">--:--</span>
                     </div>
                 </div>
                 
@@ -2993,7 +3354,7 @@ class CureVault {
         const correctPassword = this.settings.unlockProtocols.password.value;
         overlay.innerHTML = `
             <div class="cure-overlay-container" style="justify-content: flex-start;">
-                <div style="font-size:42px; margin-bottom:12px;">🔑</div>
+                <div style="font-size:48px; margin-bottom:12px;">🔑</div>
                 <h1 class="cure-title-large">Password Required</h1>
                 <p class="cure-subtitle" style="margin-top:4px;">Enter your secret key to proceed.</p>
                 
@@ -3146,8 +3507,8 @@ class CureVault {
 
         overlay.innerHTML = `
             <div class="cure-overlay-container" style="padding-top: 60px;">
-                <div class="cure-header" style="margin-bottom: 8px;">
-                    <div style="font-size:42px; margin-bottom:4px;">🔒</div>
+                <div class="cure-header" style="margin-bottom: 24px;">
+                    <div style="font-size:48px; margin-bottom:12px;">🔒</div>
                     <h1 class="cure-title-large">Strict Lock Active</h1>
                     <p class="cure-subtitle">Type the text below perfectly to unlock ${reward} minutes.</p>
                 </div>
@@ -3397,7 +3758,7 @@ class CureVault {
         overlay.innerHTML = `
             <div class="cure-overlay-container" style="padding-top: 70px;">
                 <div class="cure-header">
-                    <div style="font-size:42px; margin-bottom:4px;">${isAutoClose ? '✨' : '🔓'}</div>
+                    <div style="font-size:48px; margin-bottom:12px;">${isAutoClose ? '✨' : '🔓'}</div>
                     <h1 class="cure-title-large">${isAutoClose ? 'Task Complete' : 'Strict Lock Lifted'}</h1>
                     <p class="cure-subtitle" style="max-width:400px; margin: 4px auto 0 auto;">
                         ${subtitle}

@@ -757,3 +757,14 @@
   visibility: hidden;
   transform: translateY(10px);
 }
+
+/* Responsiveness for Iframes */
+.cure-iframe-pill {
+  bottom: 10px !important;
+  right: 10px !important;
+  transform: scale(0.85);
+  transform-origin: bottom right;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  border-radius: 12px !important;
+}

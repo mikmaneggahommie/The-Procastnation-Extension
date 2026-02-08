@@ -315,7 +315,8 @@
         </div>
 
         <!-- Allowlist Toggle -->
-        <div class="settings-section" id="shortcut-allowlist-section" style="padding-top: 24px;">
+        <div class="settings-section" id="shortcut-allowlist-section">
+          <div class="section-label" style="margin-top: 24px;">Display & Scope</div>
           <div class="card-group">
             <div class="settings-item">
               <div class="item-text">
@@ -345,6 +346,7 @@
       </div>
       <div class="scrollable-content">
         <div class="settings-section">
+          <div class="section-label">General</div>
           <div class="card-group">
             <!-- Sound -->
             <div class="settings-item-group">
@@ -359,8 +361,10 @@
                 </label>
               </div>
             </div>
+          </div>
 
-
+          <div class="section-label" style="margin-top: 24px;">Display & Scope</div>
+          <div class="card-group">
             <!-- Timer UI -->
             <div class="settings-item-group">
               <div class="settings-item">
@@ -386,7 +390,10 @@
                 </div>
               </div>
             </div>
+          </div>
 
+          <div class="section-label" style="margin-top: 24px;">System</div>
+          <div class="card-group">
             <!-- Export/Import Buttons -->
             <div class="settings-item-group">
               <div class="settings-item" style="justify-content: space-between;">
@@ -515,7 +522,7 @@
 
       <div class="scrollable-content">
         <div class="settings-section">
-          <div class="section-label">Activation Methods</div>
+          <div class="section-label">Trigger Methods</div>
           <div class="card-group">
             <div class="settings-item-group">
               <div class="settings-item">
@@ -534,15 +541,16 @@
               </div>
               <div class="sub-config" id="config-trigger-session">
                 <div class="sentence-row">
-                  Limit to
+                  <span>Limit to</span>
                   <input type="number" id="hardlock-input" class="config-number-input" value="30" min="0" />
                   <select id="hardlock-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
                     <option value="day">days</option>
                   </select>
-                  of use per
-                  <select id="session-reset-window" class="dropdown-input">
+                  <span>of use</span>
+                  <span>per</span>
+                  <select id="session-reset-window" class="unit-selector">
                     <option value="0">visit</option>
                     <option value="1800">30 minutes</option>
                     <option value="3600">hour</option>
@@ -573,7 +581,7 @@
                   Allow
                   <input type="number" id="launch-limit-input" class="config-number-input" value="3" min="0" />
                   launches every
-                  <select id="launch-limit-window" class="dropdown-input">
+                  <select id="launch-limit-window" class="unit-selector">
                     <option value="1800">30 minutes</option>
                     <option value="3600" selected>hour</option>
                     <option value="86400">day</option>
@@ -600,15 +608,16 @@
               </div>
               <div class="sub-config" id="config-browser-limit">
                 <div class="sentence-row">
-                  Limit to
+                  <span>Limit to</span>
                   <input type="number" id="browser-limit-input" class="config-number-input" value="480" min="0" />
                   <select id="browser-limit-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
                     <option value="day">days</option>
                   </select>
-                  of screen time per
-                  <select id="browser-limit-window" class="dropdown-input">
+                  <span>of screen time</span>
+                  <span>per</span>
+                  <select id="browser-limit-window" class="unit-selector">
                     <option value="3600">hour</option>
                     <option value="86400" selected>day</option>
                   </select>
@@ -618,7 +627,7 @@
           </div>
         </div>
         <div class="settings-section">
-          <div class="section-label">Unlock Protocols</div>
+          <div class="section-label">Unlock Methods</div>
           <div class="card-group">
             <div class="settings-item-group" id="reward-time-container">
               <div class="settings-item">
@@ -632,21 +641,16 @@
               </div>
               <div class="sub-config">
                 <div class="sentence-row">
-                  Grant
-                  <input
-                    type="number"
-                    id="unlock-reward-input"
-                    class="config-number-input"
-                    min="0"
-                    value="5"
-                  />
+                  <span>Grant</span>
+                  <input type="number" id="unlock-reward-input" class="config-number-input" min="0" value="5" />
                   <select id="unlock-reward-unit" class="unit-selector">
                     <option value="min" selected>minutes</option>
                     <option value="hr">hours</option>
                     <option value="session">launches</option>
                     <option value="unlimited">unlimited access</option>
                   </select>
-                  for every unlock
+                  <span>of use</span>
+                  <span>for every unlock.</span>
                 </div>
               </div>
             </div>
@@ -667,31 +671,19 @@
               </div>
               <div class="sub-config" id="config-passive">
                 <div class="sentence-row">
-                  Earn
-                  <input
-                    type="number"
-                    id="passive-reward-val"
-                    class="config-number-input"
-                    min="0"
-                    value="5"
-                  />
+                  <span>Earn</span>
+                  <input type="number" id="passive-reward-val" class="config-number-input" min="0" value="5" />
                   <select id="passive-reward-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
                   </select>
-                  for every
-                  <input
-                    type="number"
-                    id="passive-work-val"
-                    class="config-number-input"
-                    min="0"
-                    value="25"
-                  />
+                  <span>of reward for every</span>
+                  <input type="number" id="passive-work-val" class="config-number-input" min="0" value="25" />
                   <select id="passive-work-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
                   </select>
-                  spent on allowlist sites.
+                  <span>spent on allowlist sites.</span>
                 </div>
               </div>
             </div>
@@ -915,6 +907,7 @@
       <div class="scrollable-content">
 
         <div class="settings-section">
+          <div class="section-label">Trigger Methods</div>
           <div class="card-group">
             <div class="settings-item-group">
               <div class="settings-item">
@@ -995,6 +988,10 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <div class="section-label" style="margin-top: 24px;">Display & Scope</div>
+          <div class="card-group">
             <div class="settings-item">
               <div class="item-text">
                 <h3>Enable on Allowlist <span class="help-icon" data-help="pause-allowlist">?</span></h3>
@@ -1032,17 +1029,26 @@
       <div class="scrollable-content">
 
         <div class="settings-section">
+          <div class="section-label">Trigger Methods</div>
           <div class="card-group">
+            <!-- Site Activity Reminder -->
             <div class="settings-item-group">
               <div class="settings-item">
                 <div class="item-text">
-                  <h3>Interval <span class="help-icon" data-help="reminder-interval">?</span></h3>
-                  <p>Frequency of alerts</p>
+                  <h3>Site Activity Reminder <span class="help-icon" data-help="reminder-interval">?</span></h3>
+                  <p>Time spent on current site</p>
                 </div>
+                <label class="switch">
+                  <input type="checkbox" id="reminder-interval-enable" />
+                  <span class="slider round"></span>
+                </label>
               </div>
-              <div class="sub-config">
+              <div class="sub-config" id="config-reminder-interval">
                 <div class="sentence-row">
-                  Remind every
+                  <select id="reminder-interval-type" class="unit-selector">
+                    <option value="repeating">Remind every</option>
+                    <option value="once">Remind once at</option>
+                  </select>
                   <input type="number" id="reminder-input" class="config-number-input" value="15" min="0" />
                   <select id="reminder-unit" class="unit-selector">
                     <option value="min">minutes</option>
@@ -1051,78 +1057,85 @@
                 </div>
               </div>
             </div>
+
+            <!-- Screen Time Reminder -->
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Screen Time Reminder <span class="help-icon" data-help="reminder-screentime-trigger">?</span></h3>
+                  <p>Daily browsing total</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="reminder-trigger-browser-enable" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="sub-config" id="config-reminder-trigger-browser">
+                <div class="sentence-row">
+                  <select id="reminder-browser-type" class="unit-selector" style="margin-left: 0; margin-right: 4px;">
+                    <option value="once">Remind once at</option>
+                    <option value="repeating">Repeat every</option>
+                  </select>
+                  <input type="number" id="reminder-trigger-browser-val" class="config-number-input" value="120" />
+                  <select id="reminder-trigger-browser-unit" class="unit-selector">
+                    <option value="min">minutes</option>
+                    <option value="hr">hours</option>
+                  </select>
+                  of browser screen time.
+                </div>
+              </div>
+            </div>
+
+            <!-- Launch Count Trigger -->
+            <div class="settings-item-group">
+              <div class="settings-item">
+                <div class="item-text">
+                  <h3>Launch Count Trigger <span class="help-icon" data-help="reminder-launch-trigger">?</span></h3>
+                  <p>Frequent visit alerts</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="reminder-trigger-launch-enable" />
+                  <span class="slider round"></span>
+                </label>
+              </div>
+              <div class="sub-config" id="config-reminder-trigger-launch">
+                <div class="sentence-row">
+                  Remind after
+                  <input type="number" id="reminder-trigger-launch-val" class="config-number-input" value="5" />
+                  launches per
+                  <select id="reminder-trigger-launch-window" class="unit-selector">
+                    <option value="3600">hour</option>
+                    <option value="86400">day</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-label" style="margin-top: 24px;">Display & Scope</div>
+          <div class="card-group">
+            <!-- Appearance (Visual Style) -->
             <div class="settings-item">
               <div class="item-text">
-                <h3>Visual Style <span class="help-icon" data-help="reminder-style">?</span></h3>
-                <p>Appearance</p>
+                <h3>Appearance <span class="help-icon" data-help="reminder-style">?</span></h3>
+                <p>Visual presentation</p>
               </div>
               <select id="reminder-style-input" class="dropdown-input">
                 <option value="overlay">Overlay</option>
                 <option value="toast">Toast Notification</option>
               </select>
             </div>
-            <div class="settings-item-group">
-              <div class="settings-item">
-                <div class="item-text">
-                  <h3>Screen Time Reminder <span class="help-icon" data-help="reminder-screentime-trigger">?</span></h3>
-                  <p>Alert on total browsing time</p>
-                </div>
-                <label class="switch"
-                  ><input
-                    type="checkbox"
-                    id="reminder-trigger-browser-enable" /><span
-                    class="slider round"
-                  ></span
-                ></label>
-              </div>
-              <div class="sub-config" id="config-reminder-trigger-browser">
-                <div class="sentence-row">
-                  Show after
-                  <input
-                    type="number"
-                    id="reminder-trigger-browser-val"
-                    class="config-number-input"
-                    value="120"
-                  />
-                  minutes total browsing today.
-                </div>
-              </div>
-              <div class="settings-item">
-                <div class="item-text">
-                  <h3>Launch Count Trigger <span class="help-icon" data-help="reminder-launch-trigger">?</span></h3>
-                  <p>Remind after X visits</p>
-                </div>
-                <label class="switch"
-                  ><input
-                    type="checkbox"
-                    id="reminder-trigger-launch-enable" /><span
-                    class="slider round"
-                  ></span
-                ></label>
-              </div>
-              <div class="sub-config" id="config-reminder-trigger-launch">
-                <div class="sentence-row">
-                  Remind after
-                  <input
-                    type="number"
-                    id="reminder-trigger-launch-val"
-                    class="config-number-input"
-                    value="5"
-                  />
-                  launches per hour.
-                </div>
-              </div>
-            </div>
+
+            <!-- Allowlist -->
             <div class="settings-item">
               <div class="item-text">
                 <h3>Enable on Allowlist <span class="help-icon" data-help="reminder-allowlist">?</span></h3>
                 <p>Show reminders on allowed sites</p>
               </div>
-              <label class="switch"
-                ><input type="checkbox" id="reminder-whitelist-enable" /><span
-                  class="slider round"
-                ></span
-              ></label>
+              <label class="switch">
+                <input type="checkbox" id="reminder-whitelist-enable" />
+                <span class="slider round"></span>
+              </label>
             </div>
           </div>
         </div>

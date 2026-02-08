@@ -6,6 +6,7 @@ let g_dailyStats = null;
 let g_settingsCache = null;
 let g_lockSnapshots = {}; // Persistent Rule Snapshots for anti-cheat
 let g_systemInstanceId = null; // Fix: Unique ID to invalidate stale sessionStorage on reinstall/reset
+let g_activeReminders = new Map(); // FIX 129: Track active reminders per hostname for iframe queries
 
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
@@ -109,6 +110,9 @@ const DEFAULT_SETTINGS = {
     unlockReward: 5, // Minutes
     unlockRewardType: 'time', // or 'session'
     reminderInterval: 15, // Minutes
+    reminderIntervalEnabled: true,
+    reminderIntervalType: 'repeating',
+    reminderBrowserType: 'once', 
     typingDifficulty: 50, // Characters (Legacy)
     reminderStyle: 'overlay', // Changed to overlay by default
     soundEnabled: true,
@@ -403,6 +407,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let isLocked = false;
                 let currentSessionActive = false;
 
+                // Use request window if provided (for reminders), else use config (for hard lock)
+                const effectiveWindowSeconds = request.windowSeconds || config.windowSeconds || 3600;
+                const windowMs = effectiveWindowSeconds * 1000;
+
                 // 1. Check active session
                 if (siteStats.activeSession) {
                     const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
@@ -432,8 +440,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // 2. Start new session if needed
                 if (!currentSessionActive && config.enabled) {
-                    const windowMs = (config.windowSeconds || 3600) * 1000;
-                    siteStats.launches = (siteStats.launches || []).filter(ts => now - ts < windowMs);
+                    // NOTE: For hard-lock triggers, we ALWAYS use the config window
+                    const hardLockWindowMs = (config.windowSeconds || 3600) * 1000;
+                    siteStats.launches = (siteStats.launches || []).filter(ts => now - ts < hardLockWindowMs);
 
                     if (siteStats.launches.length < config.value) {
                         siteStats.launches.push(now);
@@ -445,8 +454,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
                 }
 
-                // 3. Info for UI
-                const windowMs = (config.windowSeconds || 3600) * 1000;
+                // 3. Info for UI (Calculate based on effective window)
                 const history = (siteStats.launches || []).filter(ts => now - ts < windowMs);
                 const remaining = config.enabled ? Math.max(0, config.value - history.length) : 99;
 
@@ -454,6 +462,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 if (isLocked && history.length > 0) {
                     const oldest = Math.min(...history);
                     waitTime = Math.ceil((windowMs - (now - oldest)) / 1000);
+                }
+
+                // FIX: Get global dismissal flags to return to content script
+                const globalDismissals = {};
+                if (chrome.storage.session) {
+                    const allSession = await chrome.storage.session.get(null);
+                    Object.keys(allSession).forEach(k => {
+                        if (k.startsWith('cure_global_remind_dismissed_')) {
+                            globalDismissals[k] = allSession[k];
+                        }
+                    });
                 }
 
                 // Save Updated Stats (Concurrent Safe)
@@ -467,7 +486,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     total: config.value,
                     waitTime: waitTime,
                     currentLaunches: history.length,
-                    browserSeconds: stats.browserUsageHistory ? stats.browserUsageHistory.reduce((a, c) => a + c.dur, 0) : 0
+                    browserSeconds: stats.browserUsageHistory ? stats.browserUsageHistory.reduce((a, c) => a + c.dur, 0) : 0,
+                    globalDismissals: globalDismissals
                 });
             } catch (e) {
                 console.error('[Cure] trackLaunch handler error:', e);
@@ -521,7 +541,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                  if (deltaSiteSeconds > 0) {
                     if (!stats.sites[hostname].usageHistory) stats.sites[hostname].usageHistory = [];
-                    stats.sites[hostname].usageHistory.push({ ts: now, dur: deltaSiteSeconds });
+                    
+                    // FIX 131: Deduplicate Usage (Wall-Clock Throttling)
+                    // If multiple frames/tabs report usage simultaneously (e.g. iframe + main tab),
+                    // we limit the record rate to ~1 tick per second to prevent double-counting.
+                    const history = stats.sites[hostname].usageHistory;
+                    const lastEntry = history.length > 0 ? history[history.length - 1] : null;
+                    
+                    // Allow update if:
+                    // 1. No history
+                    // 2. Last update was > 900ms ago (Standard 1s tick)
+                    // 3. Current update is large (> 1s) (Throttled/Background update)
+                    if (!lastEntry || (now - lastEntry.ts >= 900) || deltaSiteSeconds > 1) {
+                        history.push({ ts: now, dur: deltaSiteSeconds });
+                    }
                 }
 
                 if (deltaBrowserSeconds > 0) {
@@ -834,6 +867,94 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
         }
         sendResponse({ success: true });
+        return true;
+    }
+
+    // FIX 128: Cross-Tab Reminder Broadcast
+    // FIX 129: Extended to use deep frame broadcast like Strict Lock
+    // Broadcasts reminder overlay show/dismiss to ALL tabs AND embedded iframes
+    if (request.action === 'broadcastReminderState') {
+        const { hostname, show, value, type } = request;
+        const currentTabId = sender.tab?.id;
+        const cleanHost = hostname.replace(/^www\./, '');
+
+        // FIX 129: Track reminder state for iframe queries
+        if (show) {
+            g_activeReminders.set(cleanHost, { value, type, active: true });
+        } else {
+            g_activeReminders.delete(cleanHost);
+        }
+
+        const broadcastToAllFrames = (tabId, isCurrentTab = false) => {
+            if (chrome.webNavigation) {
+                chrome.webNavigation.getAllFrames({ tabId: tabId }, (frames) => {
+                    if (chrome.runtime.lastError || !frames) return;
+                    frames.forEach(frame => {
+                        // FIX: Media Kill Switch (Universal)
+                        // We ALWAYS send a media action to EVERY frame in the tab, 
+                        // bypassing hostname matching. This ensures cross-origin 
+                        // iframes (like YouTube) pause their media.
+                        chrome.tabs.sendMessage(tabId, {
+                            action: 'tabMediaAction',
+                            type: show ? 'pause' : 'resume'
+                        }, { frameId: frame.frameId }).catch(() => {});
+
+                        // Skip the sender frame (frameId 0 on the current tab)
+                        if (isCurrentTab && frame.frameId === 0) return;
+                        
+                        // Check if frame URL matches the hostname for overlay display
+                        try {
+                            const frameUrl = new URL(frame.url);
+                            const frameHost = frameUrl.hostname.replace(/^www\./, '');
+                            
+                            if (frameHost === cleanHost) {
+                                if (show) {
+                                    chrome.tabs.sendMessage(tabId, {
+                                        action: 'forceReminderOverlay',
+                                        hostname: cleanHost,
+                                        value: value,
+                                        type: type
+                                    }, { frameId: frame.frameId }).catch(() => {});
+                                } else {
+                                    chrome.tabs.sendMessage(tabId, {
+                                        action: 'dismissReminderOverlay',
+                                        hostname: cleanHost
+                                    }, { frameId: frame.frameId }).catch(() => {});
+                                }
+                            }
+                        } catch (e) {
+                            // Skip invalid URLs
+                        }
+                    });
+                });
+            }
+        };
+
+        // 1. Broadcast to ALL frames in the current tab (for embedded iframes)
+        if (currentTabId) {
+            broadcastToAllFrames(currentTabId, true);
+        }
+
+        // 2. Query ALL tabs and check all frames for matching hostname
+        chrome.tabs.query({}, (tabs) => {
+            if (chrome.runtime.lastError || !tabs) return;
+            
+            for (const tab of tabs) {
+                if (tab.id && tab.id !== currentTabId) {
+                    broadcastToAllFrames(tab.id, false);
+                }
+            }
+        });
+        
+        sendResponse({ success: true });
+        return true;
+    }
+
+    // FIX 129: Query for active reminder state (used by iframes on load)
+    if (request.action === 'getReminderState') {
+        const cleanHost = request.hostname?.replace(/^www\./, '');
+        const state = g_activeReminders.get(cleanHost);
+        sendResponse({ active: !!state, value: state?.value, type: state?.type });
         return true;
     }
 
