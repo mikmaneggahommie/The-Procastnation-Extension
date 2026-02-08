@@ -392,15 +392,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const now = Date.now();
 
                 // Merge triggers safely
-                const triggers = { ...DEFAULT_SETTINGS.hardLockTriggers, ...(settings.hardLockTriggers || {}) };
+                const hardTriggers = { ...DEFAULT_SETTINGS.hardLockTriggers, ...(settings.hardLockTriggers || {}) };
+                const pauseTriggers = { ...DEFAULT_SETTINGS.pauseTriggers, ...(settings.pauseTriggers || {}) };
+                const reminderTriggers = settings.reminderTriggers || {};
 
-                // GLOBAL KILL-SWITCH
-                if (settings.masterHardLock === false) {
-                    sendResponse({ locked: false, sessionActive: true, reason: 'masterDisabled', remaining: 99, currentLaunches: 0, browserSeconds: 0 });
-                    return;
-                }
+                // Determine which features are active for this hostname
+                const hardLockActive = settings.masterHardLock !== false && hardTriggers.launchLimit?.enabled;
+                const pauseActive = settings.masterPause !== false && pauseTriggers.launchLimit?.enabled;
+                const reminderActive = settings.masterReminders !== false && reminderTriggers.launchLimit?.enabled;
 
-                const config = triggers.launchLimit;
+                const trackingNeeded = hardLockActive || pauseActive || reminderActive;
+                const config = hardTriggers.launchLimit;
                 if (!stats.sites[hostname]) stats.sites[hostname] = { usageHistory: [], launches: [], lastActiveAt: 0, activeSession: null };
                 let siteStats = stats.sites[hostname];
                 if (!siteStats.launches) siteStats.launches = [];
@@ -440,13 +442,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
 
                 // 2. Start new session OR record explicit new visit (Launch)
-                // FIX 158: Intuitive Launch. If isNewVisit is true, we always record it.
-                if (config.enabled && (!currentSessionActive || request.isNewVisit)) {
+                // FIX 158: Intuitive Launch. Record if tracking is needed and (fresh session OR explicit isNewVisit)
+                if (trackingNeeded && (!currentSessionActive || request.isNewVisit)) {
                     // NOTE: For hard-lock triggers, we ALWAYS use the config window
                     const hardLockWindowMs = (config.windowSeconds || 3600) * 1000;
                     siteStats.launches = (siteStats.launches || []).filter(ts => now - ts < hardLockWindowMs);
 
-                    if (siteStats.launches.length < config.value) {
+                    const canAddLaunch = !hardLockActive || siteStats.launches.length < config.value;
+
+                    if (canAddLaunch) {
                         // Only push if this is actually a new visit or a fresh session start
                         siteStats.launches.push(now);
                         if (!siteStats.activeSession) {
@@ -454,7 +458,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         }
                         siteStats.lastActiveAt = now;
                         currentSessionActive = true;
-                    } else {
+                    } else if (hardLockActive) {
                         isLocked = true;
                     }
                 }
