@@ -2899,7 +2899,7 @@ class CureVault {
             timeLabel = `${value}`;
             const windowText = this.settings.reminderTriggers?.launchLimit?.windowSeconds === 86400 ? 'today' : 'this hour';
             timeUnit = `visits ${windowText}`;
-            subtitle = `You've been visiting ${site} frequently.`;
+            subtitle = `You have visited ${site} ${value} times ${windowText}...`;
             continueText = "Continue Browsing (Unlock Site)";
         } else {
             // Default: 'time' (Site Activity)
