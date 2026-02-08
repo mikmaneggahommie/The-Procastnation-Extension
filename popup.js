@@ -271,9 +271,9 @@ function validateSettings() {
     }
 
     // --- MASTER TOGGLE VALIDATION ---
-    const hlOn = document.getElementById('master-hardlock-enable')?.checked;
-    const remindersOn = document.getElementById('inner-master-reminders')?.checked;
-    const pauseOn = document.getElementById('inner-master-pause')?.checked;
+    const hlOn = document.getElementById('master-hardlock-enable')?.checked || document.getElementById('inner-master-hardlock')?.checked;
+    const remindersOn = document.getElementById('master-reminders-enable')?.checked || document.getElementById('inner-master-reminders')?.checked;
+    const pauseOn = document.getElementById('master-pause-enable')?.checked || document.getElementById('inner-master-pause')?.checked;
 
     // 1. Strict Lock Activation Method Required
     if (hlOn) {
@@ -865,6 +865,26 @@ function setupListeners() {
             });
 
             if (id.startsWith('master-')) {
+                // HOME SCREEN VALIDATION
+                if (isChecked) {
+                    const validation = validateSettings();
+                    if (!validation.valid) {
+                        // REVERT
+                        e.target.checked = false;
+                        currentSettings[settingKey] = false;
+                        
+                        // Sync others back to false
+                        Object.keys(masterKeyMap).forEach(otherId => {
+                            if (masterKeyMap[otherId] === settingKey) {
+                                const el = document.getElementById(otherId);
+                                if (el) el.checked = false;
+                            }
+                        });
+
+                        showValidationWarning(validation.errors[0], true);
+                        return;
+                    }
+                }
                 saveSettings();
                 showSavedIndicator();
             } else {
@@ -1312,6 +1332,13 @@ function setupListeners() {
     const saveTimersBtn = document.getElementById('save-timers-btn');
     if (saveTimersBtn) {
         saveTimersBtn.addEventListener('click', () => {
+            // Check validation first
+            const v = validateSettings();
+            if (!v.valid) {
+                showValidationWarning(v.errors[0], true);
+                return;
+            }
+
             currentSettings.breathingRoomDuration = getConvertedVal('breathing-input', 'breathing-unit') || 15;
             currentSettings.reminderInterval = Math.ceil(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 15;
             currentSettings.reminderStyle = document.getElementById('reminder-style-input').value;
@@ -1672,6 +1699,13 @@ function setVal(id, val) {
 function setupNewViewListeners() {
     // SAVE PAUSE SETTINGS
     document.getElementById('save-pause-btn')?.addEventListener('click', () => {
+        // Check validation first
+        const v = validateSettings();
+        if (!v.valid) {
+            showValidationWarning(v.errors[0], true);
+            return;
+        }
+
         currentSettings.breathingRoomDuration = getConvertedVal('breathing-input', 'breathing-unit');
         currentSettings.breathingFreq = document.getElementById('breathing-freq').value;
         currentSettings.pauseWhitelist = document.getElementById('pause-whitelist-enable').checked;
@@ -1702,6 +1736,13 @@ function setupNewViewListeners() {
 
     // SAVE REMINDERS SETTINGS
     document.getElementById('save-reminders-btn')?.addEventListener('click', () => {
+        // Check validation first
+        const v = validateSettings();
+        if (!v.valid) {
+            showValidationWarning(v.errors[0], true);
+            return;
+        }
+
         currentSettings.reminderIntervalEnabled = document.getElementById('reminder-interval-enable').checked;
         currentSettings.reminderIntervalType = document.getElementById('reminder-interval-type').value;
         currentSettings.reminderBrowserType = document.getElementById('reminder-browser-type').value;
@@ -1799,6 +1840,13 @@ function setupNewViewListeners() {
     // CONSISTENT SAVE BUTTONS FOR NEW VIEWS
     ['save-whitelist-btn', 'save-shortcuts-btn', 'save-blocklist-btn'].forEach(id => {
         document.getElementById(id)?.addEventListener('click', () => {
+            // Check validation first (Global master toggles might be invalid)
+            const v = validateSettings();
+            if (!v.valid) {
+                showValidationWarning(v.errors[0], true);
+                return;
+            }
+
             saveSettings();
             showSavedIndicator();
             // Immediate navigate back to HOME

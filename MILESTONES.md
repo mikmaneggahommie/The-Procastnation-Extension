@@ -12,6 +12,7 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 | Date        | Feature                               | Stable Commit | Description                                                                                                |
 | :---------- | :------------------------------------ | :------------ | :--------------------------------------------------------------------------------------------------------- |
 | Feb 8, 2026 | **Fix: Confirmation Dialog Deadlock** | `HEAD`        | Prevents "stuck" UI by disabling Save button in confirmation dialog if settings are invalid.               |
+| Feb 8, 2026 | **Global Validation Enforcement**     | `HEAD`        | Reinforced all save actions (Home screen & Sub-views) with strict master toggle validation.                |
 | Feb 8, 2026 | **UX: Master Toggle Validation**      | `HEAD`        | Disables Save buttons if master toggles are ON but no sub-triggers are selected. Ensures consistent logic. |
 | Feb 8, 2026 | **Fix: Universal Media Kill Switch**  | `HEAD`        | Broadcasts `tabMediaAction` to all frames (cross-origin) to force pause media when blocked/reminded.       |
 
