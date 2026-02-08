@@ -2879,14 +2879,14 @@ class CureVault {
             timeLabel = `${value}`;
             timeUnit = 'minutes total';
             subtitle = `You've reached your daily screen time reminder limit.`;
-            continueText = "Acknowledge & Continue";
+            continueText = "Continue Browsing (Unlock Site)";
         } else if (type === 'launch') {
             emoji = "🚀";
             title = "Visit Limit Reached";
             timeLabel = `${value}`;
             timeUnit = 'recent launches';
             subtitle = `You've opened social/media sites too frequently recently.`;
-            continueText = "Acknowledge & Continue";
+            continueText = "Continue Browsing (Unlock Site)";
         } else {
             // Default: 'time' (Site Activity)
             title = "Reminder";
