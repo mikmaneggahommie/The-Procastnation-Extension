@@ -7,6 +7,7 @@ let g_settingsCache = null;
 let g_lockSnapshots = {}; // Persistent Rule Snapshots for anti-cheat
 let g_systemInstanceId = null; // Fix: Unique ID to invalidate stale sessionStorage on reinstall/reset
 let g_activeReminders = new Map(); // FIX 129: Track active reminders per hostname for iframe queries
+let g_activeGlobalReminder = null; // FIX 155: Track active global reminder (browser-wide)
 
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
@@ -878,11 +879,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const currentTabId = sender.tab?.id;
         const cleanHost = hostname.replace(/^www\./, '');
 
-        // FIX 129: Track reminder state for iframe queries
+        const isGlobal = type === 'browser' || type === 'launch';
+
+        // FIX 129/155: Track reminder state
         if (show) {
-            g_activeReminders.set(cleanHost, { value, type, active: true });
+            if (isGlobal) {
+                g_activeGlobalReminder = { value, type };
+            } else {
+                g_activeReminders.set(cleanHost, { value, type, active: true });
+            }
         } else {
-            g_activeReminders.delete(cleanHost);
+            if (isGlobal) {
+                g_activeGlobalReminder = null;
+            } else {
+                g_activeReminders.delete(cleanHost);
+            }
         }
 
         const broadcastToAllFrames = (tabId, isCurrentTab = false) => {
@@ -907,18 +918,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             const frameUrl = new URL(frame.url);
                             const frameHost = frameUrl.hostname.replace(/^www\./, '');
                             
-                            if (frameHost === cleanHost) {
+                            if (isGlobal || frameHost === cleanHost) {
                                 if (show) {
                                     chrome.tabs.sendMessage(tabId, {
                                         action: 'forceReminderOverlay',
-                                        hostname: cleanHost,
+                                        hostname: isGlobal ? 'global' : cleanHost,
                                         value: value,
                                         type: type
                                     }, { frameId: frame.frameId }).catch(() => {});
                                 } else {
                                     chrome.tabs.sendMessage(tabId, {
                                         action: 'dismissReminderOverlay',
-                                        hostname: cleanHost
+                                        hostname: isGlobal ? 'global' : cleanHost
                                     }, { frameId: frame.frameId }).catch(() => {});
                                 }
                             }
@@ -950,11 +961,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    // FIX 129: Query for active reminder state (used by iframes on load)
+    // FIX 129/155: Query for active reminder state (used by tabs/iframes on load)
     if (request.action === 'getReminderState') {
         const cleanHost = request.hostname?.replace(/^www\./, '');
-        const state = g_activeReminders.get(cleanHost);
-        sendResponse({ active: !!state, value: state?.value, type: state?.type });
+        const siteState = g_activeReminders.get(cleanHost);
+        const globalState = g_activeGlobalReminder;
+
+        // Global reminder (if active) takes precedence for reporting
+        if (globalState) {
+            sendResponse({ active: true, value: globalState.value, type: globalState.type, isGlobal: true });
+        } else if (siteState) {
+            sendResponse({ active: true, value: siteState.value, type: siteState.type, isGlobal: false });
+        } else {
+            sendResponse({ active: false });
+        }
         return true;
     }
 

@@ -644,7 +644,8 @@ class CureVault {
         // FIX 129: Extended to handle iframes properly
         // When a reminder is triggered on one tab, show it on ALL tabs/iframes of the same hostname
         if (request.action === 'forceReminderOverlay') {
-            if (request.hostname === window.location.hostname.replace(/^www\./, '')) {
+            const isGlobal = request.hostname === 'global';
+            if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
                 // Only show if not already showing a reminder
                 if (sessionStorage.getItem('cure_reminder_active') !== '1') {
                     sessionStorage.setItem('cure_reminder_active', '1');
@@ -665,10 +666,11 @@ class CureVault {
             return;
         }
 
-        // FIX 128: Cross-Tab Reminder Dismissal
+        // FIX 128/156: Cross-Tab Reminder Dismissal
         // FIX 129: Extended to handle iframes properly
         if (request.action === 'dismissReminderOverlay') {
-            if (request.hostname === window.location.hostname.replace(/^www\./, '')) {
+            const isGlobal = request.hostname === 'global';
+            if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
                 sessionStorage.removeItem('cure_reminder_active');
                 
                 // FIX 129: Stop media enforcement for iframes
@@ -1138,7 +1140,8 @@ class CureVault {
         }
 
         // 2. Global Reminders (Only for main tab)
-        if (!this.isIframe && (force || (this.activeSeconds % 30 === 0 && deltaSecs >= 1))) {
+        // FIX 154: Increase check frequency to 10s for better accuracy on transitions
+        if (!this.isIframe && (force || (this.activeSeconds % 10 === 0 && deltaSecs >= 1))) {
             const launchWindow = (this.settings.reminderTriggers?.launchLimit?.windowSeconds) || 3600;
             this.safeSendMessage({ action: 'trackLaunch', hostname: window.location.hostname, windowSeconds: launchWindow }, (launchRes) => {
                 if (!launchRes) return;
@@ -2875,14 +2878,14 @@ class CureVault {
             title = "Daily Screen Time";
             timeLabel = `${value}`;
             timeUnit = 'minutes total';
-            subtitle = `You've reached your browser-wide screen time reminder.`;
+            subtitle = `You've reached your daily screen time reminder limit.`;
             continueText = "Acknowledge & Continue";
         } else if (type === 'launch') {
             emoji = "🚀";
             title = "Visit Limit Reached";
             timeLabel = `${value}`;
             timeUnit = 'recent launches';
-            subtitle = `You've opened social/media sites frequently this hour.`;
+            subtitle = `You've opened social/media sites too frequently recently.`;
             continueText = "Acknowledge & Continue";
         } else {
             // Default: 'time' (Site Activity)
@@ -2979,11 +2982,12 @@ class CureVault {
             btn.onclick = () => {
                 sessionStorage.removeItem('cure_reminder_active');
                 
-                // FIX 128: Broadcast dismissal to ALL tabs of this hostname
+                // FIX 128/156: Broadcast dismissal to ALL tabs (hostname-specific or global)
                 this.safeSendMessage({
                     action: 'broadcastReminderState',
                     hostname: window.location.hostname,
-                    show: false
+                    show: false,
+                    type: type
                 });
                 
                 // If this is a global reminder (browser/launch), notify background to dismiss it for ALL tabs
