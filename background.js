@@ -465,13 +465,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // 3. Info for UI (Calculate based on effective window)
                 const history = (siteStats.launches || []).filter(ts => now - ts < windowMs);
-                const remaining = config.enabled ? Math.max(0, config.value - history.length) : 99;
+                const remaining = (hardTriggers.launchLimit?.enabled) ? Math.max(0, hardTriggers.launchLimit.value - history.length) : 99;
 
                 let waitTime = 0;
                 if (isLocked && history.length > 0) {
                     const oldest = Math.min(...history);
                     waitTime = Math.ceil((windowMs - (now - oldest)) / 1000);
                 }
+
+                // Windowed Usage Stats (Merged for performance)
+                const siteWinMs = (request.siteWindowSeconds || 86400) * 1000;
+                const browserWinMs = (request.browserWindowSeconds || 86400) * 1000;
+
+                const siteSeconds = (siteStats.usageHistory || [])
+                    .filter(entry => now - entry.ts < siteWinMs)
+                    .reduce((sum, entry) => sum + entry.dur, 0);
+
+                const browserSeconds = (stats.browserUsageHistory || [])
+                    .filter(entry => now - entry.ts < browserWinMs)
+                    .reduce((sum, entry) => sum + entry.dur, 0);
 
                 // FIX: Get global dismissal flags to return to content script
                 const globalDismissals = {};
@@ -495,7 +507,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     total: config.value,
                     waitTime: waitTime,
                     currentLaunches: history.length,
-                    browserSeconds: stats.browserUsageHistory ? stats.browserUsageHistory.reduce((a, c) => a + c.dur, 0) : 0,
+                    browserSeconds: browserSeconds,
+                    siteSeconds: siteSeconds,
                     globalDismissals: globalDismissals
                 });
             } catch (e) {

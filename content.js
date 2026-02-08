@@ -1257,8 +1257,7 @@ class CureVault {
     }
 
     _continueTriggerEvaluation(resolve = null) {
-        // FIX 158: Detect Intuitive Launch (Fresh Visit)
-        // We count every new tab/window as a launch, but ignore refreshes on the same tab.
+        // FIX 158/159: Detect Intuitive Launch (Fresh Visit) and Minimize Latency
         const isNewVisit = !this.isIframe && !sessionStorage.getItem('cure_launch_counted');
         if (isNewVisit) {
             sessionStorage.setItem('cure_launch_counted', '1');
@@ -1271,82 +1270,79 @@ class CureVault {
                 resolve(val);
             };
 
-            this.safeSendMessage({
-                action: 'getLockState',
-                hostname: window.location.hostname
-            }, (lockResponse) => {
-                // FIX 105: Tab-Level Whitelisting (Sub-Frame respect)
-                if (lockResponse && lockResponse.tabWhitelisted && this.isIframe) {
+            // MEGA FIX: Parallelize all critical initialization checks to minimize overlay delay
+            const launchWindow = (this.settings.reminderTriggers?.launchLimit?.windowSeconds) || 3600;
+            const siteWindow = this.settings.hardLockTriggers?.sessionLimit?.windowSeconds || 0;
+            const browserWindow = this.settings.hardLockTriggers?.browserLimit?.windowSeconds || 86400;
+
+            const pLock = new Promise(r => this.safeSendMessage({ action: 'getLockState', hostname: window.location.hostname }, r));
+            const pStats = new Promise(r => this.safeSendMessage({ 
+                action: 'trackLaunch', 
+                hostname: window.location.hostname,
+                windowSeconds: launchWindow,
+                siteWindowSeconds: siteWindow,
+                browserWindowSeconds: browserWindow,
+                isNewVisit: isNewVisit
+            }, r));
+            const pReminder = new Promise(r => this.safeSendMessage({ action: 'getReminderState', hostname: window.location.hostname }, r));
+
+            Promise.all([pLock, pStats, pReminder]).then(([lockResponse, response, reminderRes]) => {
+                if (!lockResponse || !response) return finalResolve();
+
+                // 1. Handle Cross-Tab Reminder Sync
+                if (reminderRes && reminderRes.active) {
+                    sessionStorage.setItem('cure_reminder_active', '1');
+                    if (this.isIframe) {
+                        this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
+                            value: reminderRes.value,
+                            timeLabel: `${reminderRes.value}`,
+                            timeUnit: reminderRes.type === 'browser' ? 'minutes total' : 'minutes spent',
+                            title: reminderRes.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
+                        });
+                    } else {
+                        this.renderReminderOverlay(reminderRes.value, reminderRes.type, true);
+                    }
+                }
+
+                // 2. Handle Whitelisting & Iframe logic
+                if (lockResponse.tabWhitelisted && this.isIframe) {
                     this.removeOverlay();
-                    return resolve();
+                    return finalResolve();
                 }
 
-                // FIX 142: Sync Reminder State across new tabs (for Main Tabs and Iframes)
-                // This handles the "open new tab while blocked" case
-                this.safeSendMessage({
-                    action: 'getReminderState',
-                    hostname: window.location.hostname
-                }, (reminderRes) => {
-                    if (reminderRes && reminderRes.active) {
-                        sessionStorage.setItem('cure_reminder_active', '1');
-                        if (this.isIframe) {
-                            this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
-                                value: reminderRes.value,
-                                timeLabel: `${reminderRes.value}`,
-                                timeUnit: reminderRes.type === 'browser' ? 'minutes total' : 'minutes spent',
-                                title: reminderRes.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
-                            });
-                        } else {
-                            this.renderReminderOverlay(reminderRes.value, reminderRes.type, true);
-                        }
-                    }
-                });
-
-                // FIX 81: Verify reward time is still valid before restoring unlock protection.
-            // If the background says unlocked but reward time is consumed, clear it.
-            if (lockResponse && lockResponse.unlocked === true) {
-                const rewardSecondsGranted = this.originalRewardSeconds || 0;
-                const rewardConsumed = rewardSecondsGranted > 0 && this.activeSeconds >= rewardSecondsGranted;
-                
-                if (rewardConsumed) {
-                    // Reward time used up - clear the unlock state and check triggers
-                    this.stickyUnlocked = false;
-                    sessionStorage.removeItem('cure_sticky_unlocked');
-                    sessionStorage.removeItem('cure_success_page_active');
-                    this.originalRewardSeconds = 0;
-                    this.sessionBaseSeconds = 0;
-                    this.safeSendMessage({ action: 'clearLockState', hostname: window.location.hostname });
-                    // Don't return - fall through to check triggers below
-                } else {
-                    // Reward still valid - restore protection
-                    this.stickyUnlocked = true;
-                    sessionStorage.setItem(`cure_sticky_unlocked_${window.location.hostname}`, 'true');
-
-                    // Fix 73: If we were on the success screen and navigated away/back,
-                    // re-render the success screen instead of just showing the site.
-                    if (sessionStorage.getItem('cure_success_page_active') === 'true') {
-                        this.renderSuccess(this.settings.unlockReward || 5);
-                        return resolve();
-                    }
-
-                    // If we were showing an overlay, remove it.
-                    const root = this.ensureShadow();
-                    const hasOverlay = root && root.getElementById(this.overlayId);
-                    if (hasOverlay) this.removeOverlay();
+                // 3. Handle Sticky Unlock (Reward) logic
+                if (lockResponse.unlocked === true) {
+                    const rewardSecondsGranted = this.originalRewardSeconds || 0;
+                    const rewardConsumed = rewardSecondsGranted > 0 && this.activeSeconds >= rewardSecondsGranted;
                     
-                    if (!this.timerInterval) this.stateMonitor();
-                    return resolve();
+                    if (rewardConsumed) {
+                        this.stickyUnlocked = false;
+                        sessionStorage.removeItem('cure_sticky_unlocked');
+                        sessionStorage.removeItem('cure_success_page_active');
+                        this.originalRewardSeconds = 0;
+                        this.sessionBaseSeconds = 0;
+                        this.safeSendMessage({ action: 'clearLockState', hostname: window.location.hostname });
+                    } else {
+                        this.stickyUnlocked = true;
+                        sessionStorage.setItem(`cure_sticky_unlocked_${window.location.hostname}`, 'true');
+                        if (sessionStorage.getItem('cure_success_page_active') === 'true') {
+                            this.renderSuccess(this.settings.unlockReward || 5);
+                            return finalResolve();
+                        }
+                        const root = this.ensureShadow();
+                        const hasOverlay = root && root.getElementById(this.overlayId);
+                        if (hasOverlay) this.removeOverlay();
+                        if (!this.timerInterval) this.stateMonitor();
+                        return finalResolve();
+                    }
+                } else if (this.isIframe && lockResponse.unlocked) {
+                    this.removeOverlay();
                 }
-            } else {
-                 if (this.isIframe && lockResponse.unlocked) {
-                     this.removeOverlay();
-                 }
-            }
 
-                // If actively locked (Sticky: not beaten yet), go straight to hard lock 
-                if (lockResponse && lockResponse.locked) {
+                // 4. Check Hard Lock Status
+                if (lockResponse.locked) {
                     this.stateHardLock(lockResponse.lockState?.reason || 'limit', true);
-                    return resolve();
+                    return finalResolve();
                 }
 
                 const isWhitelisted = this.isWhitelisted();
@@ -1356,121 +1352,71 @@ class CureVault {
 
                 if (!anyFeatureOn) {
                     this.removeOverlay();
-                    return resolve();
+                    return finalResolve();
                 }
 
                 if (isWhitelisted && !this.settings.pauseWhitelist && !this.settings.reminderWhitelist) {
                     this.removeOverlay();
-                    return resolve();
+                    return finalResolve();
                 }
 
-                // 3. Fetch latest usage stats and check dynamic triggers
-                this.safeSendMessage({
-                    action: 'getWindowedUsage',
-                    hostname: window.location.hostname,
-                    siteWindowSeconds: this.settings.hardLockTriggers?.sessionLimit?.windowSeconds || 0,
-                    browserWindowSeconds: this.settings.hardLockTriggers?.browserLimit?.windowSeconds || 86400
-                }, (res) => {
-                    if (res) {
-                        this.windowedSiteSeconds = res.siteSeconds;
-                        this.windowedBrowserSeconds = res.browserSeconds;
+                // Sync local stats with ground truth from background
+                if (response) {
+                    this.windowedSiteSeconds = response.siteSeconds || 0;
+                    if (this.mode === 'up') {
+                        this.activeSeconds = this.windowedSiteSeconds;
                     }
-                    
-                    // ALSO Fetch/Verify Launch Status for complete evaluation
-                    this.safeSendMessage({ 
-                        action: 'trackLaunch', 
-                        hostname: window.location.hostname,
-                        isNewVisit: isNewVisit // FIX 158: Report fresh visit if detected
-                    }, (launchRes) => {
-                        const combined = { ...(res || {}), ...(launchRes || {}) };
-                        const response = combined; // Rename for consistency with original code
+                    this.windowedBrowserSeconds = response.browserSeconds || 0;
+                }
 
-                        // Update our local windowed logic with ground truth from background
-                        if (response) {
-                            this.windowedSiteSeconds = response.siteSeconds || 0;
-                            // FIX 135: Sync Timer UI with Global Stats
-                            // If we accrued time in an iframe/other tab, update our local counter to match.
-                            if (this.mode === 'up') {
-                                this.activeSeconds = this.windowedSiteSeconds;
-                            }
-                            this.windowedBrowserSeconds = response.browserSeconds || 0;
-                        }
+                // 5. Evaluate All Triggers (Hard Lock, Launch Reminder, Pause)
+                const triggerReason = this.checkAnyTrigger();
+                if (triggerReason) {
+                    sessionStorage.removeItem('cure_reminder_active');
+                    localStorage.removeItem('cure_reminder_active');
+                    this.stateHardLock(triggerReason === true ? null : triggerReason);
+                    return finalResolve();
+                }
 
-                        const triggerReason = this.checkAnyTrigger();
-                        if (triggerReason) {
-                            sessionStorage.removeItem('cure_reminder_active'); // FIX: Wipe reminder state on lock
-                            localStorage.removeItem('cure_reminder_active');
-                            this.stateHardLock(triggerReason === true ? null : triggerReason);
-                            return resolve();
-                        }
+                // 6. Check Additional Reminders (Launch Limit specifically)
+                const masterRemindersOn = this.settings.masterReminders !== false;
+                const rTriggers = this.settings.reminderTriggers || {};
+                const currentLaunches = response?.currentLaunches || 0;
 
-                        // 3. Check Reminder State
-                        const masterRemindersOn = this.settings.masterReminders !== false;
-                        
-                        // FIX: Aggressive cleanup of legacy localStorage state that causes "0 min" ghost reminders
-                        if (localStorage.getItem('cure_reminder_active')) {
-                            localStorage.removeItem('cure_reminder_active');
-                        }
+                if (masterRemindersOn && rTriggers.launchLimit?.enabled && currentLaunches >= rTriggers.launchLimit.value) {
+                    // Check if already dismissed
+                    const dismissKey = `cure_global_remind_dismissed_launch`;
+                    if (!response?.globalDismissals?.[dismissKey]) {
+                        this.renderReminderOverlay(currentLaunches, 'launch');
+                        return finalResolve();
+                    }
+                }
 
-                        const reminderActive = sessionStorage.getItem('cure_reminder_active') === '1';
+                // 7. Check Pause Triggers (Launch & Browser)
+                const pauseTriggers = this.settings.pauseTriggers || {};
+                const browserSecs = response?.browserSeconds || 0;
+                const canShowPause = !this.isWhitelisted() || !!this.settings.pauseWhitelist;
 
-                        if (!masterRemindersOn && reminderActive) {
-                            sessionStorage.removeItem('cure_reminder_active');
-                            this.removeOverlay();
-                        }
+                if (canShowPause && this.settings.masterPause !== false) {
+                    if (pauseTriggers.launchLimit?.enabled && currentLaunches >= pauseTriggers.launchLimit.value) {
+                        this.stateBreathingRoom('launch');
+                        return finalResolve();
+                    }
+                    if (pauseTriggers.browserLimit?.enabled && browserSecs >= (pauseTriggers.browserLimit.value * 60)) {
+                        this.stateBreathingRoom('browser');
+                        return finalResolve();
+                    }
+                }
 
-                        if (masterRemindersOn && reminderActive) {
-                            // FIX 121: Respect reminderWhitelist setting on reminder re-render
-                            const isWhitelisted = this.isWhitelisted();
-                            const allowOnWhitelist = !!this.settings.reminderWhitelist;
-                            
-                            if (!isWhitelisted || allowOnWhitelist) {
-                                const mins = Math.floor(this.activeSeconds / 60);
-                                // FIX: Guard against "0 min" reminders on initial load
-                                if (mins > 0) {
-                                    this.renderReminderOverlay(mins);
-                                } else {
-                                    sessionStorage.removeItem('cure_reminder_active');
-                                }
-                            } else {
-                                // Whitelisted and setting is off - clear the reminder state
-                                sessionStorage.removeItem('cure_reminder_active');
-                            }
-                            return resolve();
-                        }
+                // 8. Standard Frequency Pause
+                if (this.settings.masterPause !== false && this.shouldShowBreathingRoom(response)) {
+                    this.stateBreathingRoom('always');
+                    return finalResolve();
+                }
 
-                        // 4. Check Pause Triggers (Launch & Browser)
-                        const pauseTriggers = this.settings.pauseTriggers || {};
-                        const currentLaunches = response?.currentLaunches || 0;
-                        const browserSecs = response?.browserSeconds || 0;
-                        const canShowPause = !this.isWhitelisted() || !!this.settings.pauseWhitelist;
-
-                        if (canShowPause && this.settings.masterPause !== false) {
-                            if (pauseTriggers.launchLimit?.enabled && currentLaunches >= pauseTriggers.launchLimit.value) {
-                                this.stateBreathingRoom('launch');
-                                return resolve();
-                            }
-                            if (pauseTriggers.browserLimit?.enabled && browserSecs >= (pauseTriggers.browserLimit.value * 60)) {
-                                this.stateBreathingRoom('browser');
-                                return resolve();
-                            }
-                        }
-
-                        // 5. Standard Frequency Pause
-                        if (this.settings.masterPause !== false && this.shouldShowBreathingRoom(response)) {
-                            this.stateBreathingRoom('freq');
-                            return resolve();
-                        } else {
-                            // Only start monitor if not already running AND no overlay is active
-                            const root = this.ensureShadow();
-                            const hasOverlay = root && root.getElementById(this.overlayId);
-                            if (!this.timerInterval && !hasOverlay) {
-                                this.stateMonitor();
-                            }
-                            return resolve();
-                        }
-                    });
-                });
+                // Final cleanup
+                if (!this.timerInterval) this.stateMonitor();
+                finalResolve();
             });
         });
     }
