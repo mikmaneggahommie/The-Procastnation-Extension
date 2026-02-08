@@ -111,7 +111,7 @@ function resetDirty() {
 }
 
 
-function showConfirmDialog(title, msg, onSave, onDiscard) {
+function showConfirmDialog(title, msg, onSave, onDiscard, saveDisabled = false) {
     const modal = document.getElementById('confirm-modal');
     if (!modal) return;
 
@@ -123,7 +123,27 @@ function showConfirmDialog(title, msg, onSave, onDiscard) {
 
     modal.style.display = 'flex';
 
+    // Handle disabled state for the save button
+    if (saveDisabled) {
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.35';
+        saveBtn.style.filter = 'grayscale(1)';
+        saveBtn.style.cursor = 'not-allowed';
+        saveBtn.style.pointerEvents = 'none';
+        
+        // Update message to clarify why save is disabled
+        modal.querySelector('.confirm-title').textContent = "Incomplete Settings";
+        modal.querySelector('.confirm-message').textContent = "Your changes cannot be saved because some settings are incomplete. Fix the errors or discard to leave.";
+    } else {
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.filter = 'none';
+        saveBtn.style.cursor = 'pointer';
+        saveBtn.style.pointerEvents = 'auto';
+    }
+
     saveBtn.onclick = () => {
+        if (saveDisabled) return;
         modal.style.display = 'none';
         onSave();
     };
@@ -761,7 +781,7 @@ function setupListeners() {
                 // Find visible save button in current view
                 const currentView = el.closest('.view');
                 const saveBtn = currentView?.querySelector('[id^="save-"]');
-                // if (saveBtn) shakeButton(saveBtn); // Shake removed per user request
+                const isSaveDisabled = saveBtn?.disabled === true;
 
                 showConfirmDialog(
                     "Unsaved Changes",
@@ -782,7 +802,8 @@ function setupListeners() {
                             resetDirty();
                             goHome();
                         });
-                    }
+                    },
+                    isSaveDisabled // Pass disabled state
                 );
                 return;
             }

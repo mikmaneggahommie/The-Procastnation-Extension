@@ -9,10 +9,11 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 ## 🚀 Milestone Log
 
-| Date        | Feature                              | Stable Commit | Description                                                                                                |
-| :---------- | :----------------------------------- | :------------ | :--------------------------------------------------------------------------------------------------------- |
-| Feb 8, 2026 | **UX: Master Toggle Validation**     | `HEAD`        | Disables Save buttons if master toggles are ON but no sub-triggers are selected. Ensures consistent logic. |
-| Feb 8, 2026 | **Fix: Universal Media Kill Switch** | `HEAD`        | Broadcasts `tabMediaAction` to all frames (cross-origin) to force pause media when blocked/reminded.       |
+| Date        | Feature                               | Stable Commit | Description                                                                                                |
+| :---------- | :------------------------------------ | :------------ | :--------------------------------------------------------------------------------------------------------- |
+| Feb 8, 2026 | **Fix: Confirmation Dialog Deadlock** | `HEAD`        | Prevents "stuck" UI by disabling Save button in confirmation dialog if settings are invalid.               |
+| Feb 8, 2026 | **UX: Master Toggle Validation**      | `HEAD`        | Disables Save buttons if master toggles are ON but no sub-triggers are selected. Ensures consistent logic. |
+| Feb 8, 2026 | **Fix: Universal Media Kill Switch**  | `HEAD`        | Broadcasts `tabMediaAction` to all frames (cross-origin) to force pause media when blocked/reminded.       |
 
 | Feb 8, 2026 | **Feat: Reactive Reminder Updates** | `HEAD` | Immediate "greedy" re-evaluation of usage limits when settings are saved. Overlays trigger instantly. |
 | Feb 8, 2026 | **UI: Rich Iframe Synchronization** | `HEAD` | Unified 32px pulsing timers, transparent bordered buttons, and rich headers across main tabs and iframes. |
