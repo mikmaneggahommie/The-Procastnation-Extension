@@ -250,10 +250,13 @@ function validateSettings() {
         errors.push('Browser limit must be at least 1 minute.');
     }
 
-    // --- STRICT LOCK ENFORCEMENT ---
-    const hlOn = document.getElementById('master-hardlock-enable').checked;
+    // --- MASTER TOGGLE VALIDATION ---
+    const hlOn = document.getElementById('master-hardlock-enable')?.checked;
+    const remindersOn = document.getElementById('inner-master-reminders')?.checked;
+    const pauseOn = document.getElementById('inner-master-pause')?.checked;
+
+    // 1. Strict Lock Activation Method Required
     if (hlOn) {
-        // 1. Activation Method Required
         const sessionOn = document.getElementById('trigger-session-enable').checked;
         const launchOn = document.getElementById('trigger-launch-enable').checked;
         const browserOn = document.getElementById('trigger-browser-enable').checked;
@@ -272,15 +275,30 @@ function validateSettings() {
         if (!typeOn && !passOn && !delayOn && !passiveOn && !noneOn) {
             errors.push('<strong>Strict Lock Error:</strong> Select at least one Unlock Protocol.');
         }
-
-        // 3. Password Integrity Check (State-Aware)
-        // NOTE: During EDITING, we no longer show errors here - the Confirm button handles progressive disclosure
-        // We only block if password is enabled but NO password exists (neither stored nor in buffer)
-        // NOTE: Password integrity is now handled SILENTLY in updateUIState to avoid intrusive banners
-        // while the user is simply navigating the setup UI.
-
     }
 
+    // 3. Reminders Activation Method Required
+    if (remindersOn) {
+        const rIntervalOn = document.getElementById('reminder-interval-enable')?.checked;
+        const rBrowserOn = document.getElementById('reminder-trigger-browser-enable')?.checked;
+        const rLaunchOn = document.getElementById('reminder-trigger-launch-enable')?.checked;
+
+        if (!rIntervalOn && !rBrowserOn && !rLaunchOn) {
+            errors.push('<strong>Reminders Error:</strong> Select at least one Trigger Method.');
+        }
+    }
+
+    // 4. Pause Activation Method Required
+    if (pauseOn) {
+        const pLaunchOn = document.getElementById('pause-trigger-launch-enable')?.checked;
+        const pBrowserOn = document.getElementById('pause-trigger-browser-enable')?.checked;
+        const pWhitelistOn = document.getElementById('pause-whitelist-enable')?.checked;
+        
+        // Per user request: Master toggle should not be "Enabled" if no specific triggers are active.
+        if (!pLaunchOn && !pBrowserOn && !pWhitelistOn) {
+             errors.push('<strong>Pause Error:</strong> Select at least one Trigger Method.');
+        }
+    }
     // --- DOCTOR STRANGE HEURISTICS (Toxic Configs) ---
 
     // RULE 4: The Flicker Trap (Limit > 95% of Window)
@@ -1081,11 +1099,15 @@ function setupListeners() {
     });
 
     // --- TRIGGER TOGGLES ---
-    ['trigger-session-enable', 'trigger-browser-enable', 'trigger-launch-enable'].forEach(id => {
+    const triggerIds = [
+        'trigger-session-enable', 'trigger-browser-enable', 'trigger-launch-enable',
+        'pause-trigger-launch-enable', 'pause-trigger-browser-enable', 'pause-whitelist-enable',
+        'reminder-interval-enable', 'reminder-trigger-browser-enable', 'reminder-trigger-launch-enable'
+    ];
+    triggerIds.forEach(id => {
         document.getElementById(id)?.addEventListener('change', (e) => {
             markDirty();
             updateUIState();
-            // showSavedIndicator removed to avoid redundancy
         });
     });
 
@@ -1884,7 +1906,12 @@ function updateUIState() {
     // 4. Validation (Visual Polish)
     const v = validateSettings();
     const hlSaveBtn = document.getElementById('save-difficulty-btn');
+    const remindSaveBtn = document.getElementById('save-reminders-btn');
+    const pauseSaveBtn = document.getElementById('save-pause-btn');
+
     const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked;
+    const isRemindMasterOn = document.getElementById('inner-master-reminders')?.checked;
+    const isPauseMasterOn = document.getElementById('inner-master-pause')?.checked;
 
     // SILENT PASSWORD CHECK: Disable Save if password is ON but incomplete/editing
     const passOn = document.getElementById('proto-password-enable')?.checked;
@@ -1894,31 +1921,48 @@ function updateUIState() {
     const hasPassword = hasStoredPassword || hasBufferPassword;
     const passIncomplete = passOn && (isPasswordEditing || !hasPassword);
 
-    if (hlSaveBtn && isHLMasterOn) {
-        if (v.errors.length > 0 || passIncomplete) {
-            hlSaveBtn.disabled = true;
-            hlSaveBtn.style.opacity = '0.35';
-            hlSaveBtn.style.filter = 'grayscale(1)';
-            hlSaveBtn.style.cursor = 'not-allowed';
-            hlSaveBtn.style.pointerEvents = 'none';
-            
-            // Only show banner for non-password errors
-            if (v.errors.length > 0) {
-                showValidationWarning(v.errors[0], true);
-            } else {
-                hideValidationWarning();
-            }
+    // Helper to apply visual state to save buttons based on validation
+    const applySaveBtnState = (btn, isValid, errorMsg) => {
+        if (!btn) return;
+        if (!isValid) {
+            btn.disabled = true;
+            btn.style.opacity = '0.35';
+            btn.style.filter = 'grayscale(1)';
+            btn.style.cursor = 'not-allowed';
+            btn.style.pointerEvents = 'none';
+            if (errorMsg) showValidationWarning(errorMsg, true);
         } else {
-            hlSaveBtn.disabled = false;
-            hlSaveBtn.style.opacity = '1';
-            hlSaveBtn.style.filter = 'none';
-            hlSaveBtn.style.cursor = 'pointer';
-            hlSaveBtn.style.pointerEvents = 'auto';
-
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.filter = 'none';
+            btn.style.cursor = 'pointer';
+            btn.style.pointerEvents = 'auto';
             hideValidationWarning();
         }
-    } else {
-        hideValidationWarning();
+    };
+
+    // Evaluate Strict Lock Save Button
+    const hlError = v.errors.find(e => e.includes('Strict Lock'));
+    if (hlSaveBtn && isHLMasterOn) {
+        applySaveBtnState(hlSaveBtn, !hlError && !passIncomplete, hlError || (passIncomplete ? "Complete password setup" : null));
+    } else if (hlSaveBtn) {
+        applySaveBtnState(hlSaveBtn, true);
+    }
+
+    // Evaluate Reminders Save Button
+    const remindError = v.errors.find(e => e.includes('Reminders'));
+    if (remindSaveBtn && isRemindMasterOn) {
+        applySaveBtnState(remindSaveBtn, !remindError, remindError);
+    } else if (remindSaveBtn) {
+        applySaveBtnState(remindSaveBtn, true);
+    }
+
+    // Evaluate Pause Save Button
+    const pauseError = v.errors.find(e => e.includes('Pause'));
+    if (pauseSaveBtn && isPauseMasterOn) {
+        applySaveBtnState(pauseSaveBtn, !pauseError, pauseError);
+    } else if (pauseSaveBtn) {
+        applySaveBtnState(pauseSaveBtn, true);
     }
 }
 
