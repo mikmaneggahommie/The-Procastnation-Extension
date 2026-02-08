@@ -2895,10 +2895,11 @@ class CureVault {
             continueText = "Continue Browsing (Unlock Site)";
         } else if (type === 'launch') {
             emoji = "🚀";
-            title = "Visit Limit Reached";
+            title = "Frequent Visit Alert";
             timeLabel = `${value}`;
-            timeUnit = 'recent launches';
-            subtitle = `You've opened social/media sites too frequently recently.`;
+            const windowText = this.settings.reminderTriggers?.launchLimit?.windowSeconds === 86400 ? 'today' : 'this hour';
+            timeUnit = `visits ${windowText}`;
+            subtitle = `You've been visiting ${site} frequently.`;
             continueText = "Continue Browsing (Unlock Site)";
         } else {
             // Default: 'time' (Site Activity)
