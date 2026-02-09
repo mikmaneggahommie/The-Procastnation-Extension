@@ -621,8 +621,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 stats.browserUsageHistory = stats.browserUsageHistory.filter(c => now - c.ts < oneDayMs);
                 stats.sites[hostname].usageHistory = (stats.sites[hostname].usageHistory || []).filter(c => now - c.ts < oneDayMs);
 
+                // FIX 192: Calculate authoritative session duration (sitting duration)
+                // This allows all tabs (main and iframe) to snap to the exact same second.
+                const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
+                const timeoutMs = timeoutMins * 60 * 1000;
+                const sittingSeconds = (stats.sites[hostname].usageHistory || [])
+                    .filter(c => now - c.ts < timeoutMs)
+                    .reduce((acc, c) => acc + (c.dur || 0), 0);
+
                 saveStats();
-                sendResponse({ success: true });
+                sendResponse({ success: true, sittingSeconds });
             } catch (e) {
                 console.error('[Cure] trackUsage failed:', e);
                 sendResponse({ success: false, error: e.message });

@@ -723,10 +723,10 @@ class CureVault {
                     }
                 }
 
-                // FIX 169/191: Force save timer so iframes sync to the correct current time.
+                // FIX 169/191/192: Force save timer so iframes/tabs sync to the correct current time.
                 // CRITICAL (Fix 191): Only the tab the user actually Interacted with (the initiator) 
                 // should save its timer. Passive tabs will follow via handleStorageChange logic.
-                if (!this.isIframe && (!request.initiatorInstanceId || request.initiatorInstanceId === this.instanceId)) {
+                if (!request.initiatorInstanceId || request.initiatorInstanceId === this.instanceId) {
                     this.saveTimer();
                 }
                 
@@ -2041,7 +2041,10 @@ class CureVault {
 
     saveTimer() {
         if (!this.isContextValid()) return;
-        if (this.isIframe) return; // FIX 86: No timer saving in iframes
+        
+        // FIX 192: Unblock iframes, but only if they are the active tracker (e.g. video playing)
+        if (this.isIframe && !this.checkIfPlaying()) return;
+        
         if (this._resetGuard) return; // FIX 126: Prevent zombie state saving during reset
         const key = `cure_timer_${window.location.hostname}`;
         const now = Date.now();
@@ -2054,6 +2057,7 @@ class CureVault {
             originalRewardSeconds: this.originalRewardSeconds
         };
 
+        // Monotonic check is handled reactively by other tabs via handleStorageChange (Fix 191)
         chrome.storage.local.set({ [key]: data });
         this.lastSaveTime = now;
     }
@@ -2101,6 +2105,15 @@ class CureVault {
                 hostname: host,
                 deltaSiteSeconds: deltaDaily,
                 deltaBrowserSeconds: deltaBrowser
+            }, (res) => {
+                // FIX 192: Adopt Authoritative Session Duration if provided
+                // This ensures all tabs/iframes snap to the exact same second.
+                if (res && res.sittingSeconds !== undefined) {
+                    if (this.mode === 'up' && res.sittingSeconds > this.activeSeconds) {
+                        this.activeSeconds = res.sittingSeconds;
+                        this.saveTimer(); 
+                    }
+                }
             });
             this.lastSyncedDailySeconds = this.dailySeconds;
             this.lastSyncedBrowserSeconds = this.browserSeconds;
