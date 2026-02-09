@@ -950,7 +950,7 @@
               </div>
               <div class="sub-config" id="config-pause-trigger-launch">
                 <div class="sentence-row">
-                  Show after
+                  Every
                   <input
                     type="number"
                     id="pause-trigger-launch-val"
@@ -1073,8 +1073,8 @@
               <div class="sub-config" id="config-reminder-trigger-browser">
                 <div class="sentence-row">
                   <select id="reminder-browser-type" class="unit-selector" style="margin-left: 0; margin-right: 4px;">
+                    <option value="repeating">Remind every</option>
                     <option value="once">Remind once at</option>
-                    <option value="repeating">Repeat every</option>
                   </select>
                   <input type="number" id="reminder-trigger-browser-val" class="config-number-input" value="120" />
                   <select id="reminder-trigger-browser-unit" class="unit-selector">
@@ -1100,7 +1100,10 @@
               </div>
               <div class="sub-config" id="config-reminder-trigger-launch">
                 <div class="sentence-row">
-                  Remind after
+                  <select id="reminder-launch-type" class="unit-selector" style="margin-left: 0; margin-right: 4px;">
+                    <option value="repeating">Remind every</option>
+                    <option value="once">Remind once at</option>
+                  </select>
                   <input type="number" id="reminder-trigger-launch-val" class="config-number-input" value="5" />
                   launches per
                   <select id="reminder-trigger-launch-window" class="unit-selector">

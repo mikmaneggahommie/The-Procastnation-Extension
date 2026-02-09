@@ -217,6 +217,9 @@ function normalizeTypingText(str) {
 class CureVault {
     constructor() {
         // Mark as singleton instance
+        if (window.__CURE_VAULT_INSTANCE__) {
+            window.__CURE_VAULT_INSTANCE__.cleanup();
+        }
         window.__CURE_VAULT_INSTANCE__ = this;
 
         this.settings = {};
@@ -271,6 +274,8 @@ class CureVault {
         this._toastDebounce = false;
         this._lastDecisionKey = null; // Stability guard for UI re-renders
         this.lastRenderedReason = null; // Fix: Prevent rapid-fire re-rendering
+        this._pEvaluation = null; // Concurrency guard for trigger checks
+        this._pendingReEval = false; // Queue for follow-up evaluations
         
         // FIX 86: Track iframe state for conditional logic
         // FIX 103: Simple Check. ancestorOrigins caused false positives on main sites.
@@ -309,6 +314,14 @@ class CureVault {
         window.addEventListener('pageshow', this.handlePageShow);
 
         this.setupProximity();
+
+        // FIX: Universal SPA Navigation Support
+        const handleNav = () => {
+            sessionStorage.removeItem('cure_launch_counted'); // Allow new "visit" on SPA nav
+            this.evaluateAllTriggers().then(() => this.forceRefreshUI());
+        };
+        window.addEventListener('popstate', handleNav);
+        window.addEventListener('hashchange', handleNav);
     }
 
     handleDOMContentLoaded() {
@@ -1120,8 +1133,8 @@ class CureVault {
         }
 
         // 2. Global Reminders (Only for main tab)
-        // FIX 154: Increase check frequency to 10s for better accuracy on transitions
-        if (!this.isIframe && (force || (this.activeSeconds % 10 === 0 && deltaSecs >= 1))) {
+        // FIX 154: Increase frequency to 1s for instant feedback on visits
+        if (!this.isIframe && (force || deltaSecs >= 1)) {
             const launchWindow = (this.settings.reminderTriggers?.launchLimit?.windowSeconds) || 3600;
             this.safeSendMessage({ 
                 action: 'trackLaunch', 
@@ -1151,13 +1164,13 @@ class CureVault {
                                 sessionStorage.setItem('cure_remind_browser_shown', '1');
                             }
                         } else {
-                            const crossed = Math.floor(launchRes.browserSeconds % limitSecs) < 30;
-                            if (crossed || greedy) {
+                            // Repeating: Every X minutes
+                            const minsSpent = Math.floor(launchRes.browserSeconds / 60);
+                            if (minsSpent >= rTriggers.browserLimit.value && minsSpent % rTriggers.browserLimit.value === 0) {
                                 const lastRepeat = sessionStorage.getItem('cure_remind_browser_last');
-                                const currentBucket = Math.floor(launchRes.browserSeconds / limitSecs);
-                                if (lastRepeat !== currentBucket.toString()) {
+                                if (lastRepeat !== minsSpent.toString()) {
                                     shouldTrigger = true;
-                                    sessionStorage.setItem('cure_remind_browser_last', currentBucket.toString());
+                                    sessionStorage.setItem('cure_remind_browser_last', minsSpent.toString());
                                 }
                             }
                         }
@@ -1176,17 +1189,40 @@ class CureVault {
 
                 // 2. Launch Count Reminder (Visit Limit)
                 if (!globalTriggered && rTriggers.launchLimit?.enabled && launchRes.currentLaunches >= rTriggers.launchLimit.value) {
+                    // FIX: Recently Dismissed Guard (Prevents race-triggered double alerts)
+                    if (this.recentlyDismissedLaunch && Date.now() - this.recentlyDismissedLaunch < 2000) {
+                        return; 
+                    }
                     const limit = rTriggers.launchLimit.value;
-                    const hasShown = sessionStorage.getItem(`cure_remind_launch_shown_${limit}`);
+                    const rType = rTriggers.launchLimit.type || 'repeating';
+                    let shouldTrigger = false;
 
-                    if (!hasShown) {
+                    if (rType === 'once') {
+                        const hasShown = sessionStorage.getItem(`cure_remind_launch_shown_${limit}`);
+                        if (!hasShown) {
+                            shouldTrigger = true;
+                            sessionStorage.setItem(`cure_remind_launch_shown_${limit}`, '1');
+                        }
+                    } else {
+                        // Repeating: Show every 'limit' visits (5, 10, 15...)
+                        const crossed = Math.floor(launchRes.currentLaunches % limit) === 0;
+                        if (crossed) {
+                            const lastRepeat = sessionStorage.getItem(`cure_remind_launch_last_${limit}`);
+                            const currentBucket = Math.floor(launchRes.currentLaunches / limit);
+                            if (lastRepeat !== currentBucket.toString()) {
+                                shouldTrigger = true;
+                                sessionStorage.setItem(`cure_remind_launch_last_${limit}`, currentBucket.toString());
+                            }
+                        }
+                    }
+
+                    if (shouldTrigger) {
                         if (rStyle === 'overlay') {
                             this.renderReminderOverlay(launchRes.currentLaunches, 'launch');
                             MediaController.pauseAll();
                         } else if (!force) {
                             this.showToast(`🚀 Visit Limit: ${launchRes.currentLaunches} launches`, 'reminder');
                         }
-                        sessionStorage.setItem(`cure_remind_launch_shown_${limit}`, '1');
                     }
                 }
             });
@@ -1200,11 +1236,14 @@ class CureVault {
     evaluateAllTriggers() {
         if (!this.isContextValid()) return Promise.resolve();
 
-        // FIX: Immediate Whitelist Shortcut.
-        // On whitelisted sites, we don't need to check reset status or lock status from background.
-        // This prevents timeouts on sites like Google/GitHub.
-        // FIX 129: BUT we must respect "Enable on Allowlist" for Reminders/Pause.
-        // If those are ON, we cannot short-circuit, or we'll get a Render->Clear->Render freeze loop.
+        // FIX: Concurrency Guard.
+        // If an evaluation is already running, queue a follow-up if needed,
+        // but don't start a parallel one which causes double-increments.
+        if (this._pEvaluation) {
+            this._pendingReEval = true;
+            return this._pEvaluation;
+        }
+
         const whitelistReminders = !!this.settings.reminderWhitelist;
         const whitelistPause = !!this.settings.pauseWhitelist;
 
@@ -1213,48 +1252,21 @@ class CureVault {
             return Promise.resolve();
         }
 
-        // FIX 107/YouTube: Background-Enforced Reset (Iframe Isolation).
-        if (!this.isIframe) {
-            return new Promise(resolve => {
-                this.safeSendMessage({ action: 'checkResetStatus', hostname: window.location.hostname }, (res) => {
-                    if (res && res.needsReset) {
-                        // FIX: Restore absolute flag sync. 
-                        // If background says we need reset, we must set the flags so renderDecisionScreen sees them.
-                        sessionStorage.setItem('cure_needs_reset', 'true');
-                        sessionStorage.setItem(`cure_needs_reset_${window.location.hostname}`, 'true');
-                        
-                        this.stateHardLock('limit', true);
-                        resolve();
-                    } else {
-                        // Continue to regular lock checks
-                        this._continueTriggerEvaluation(resolve);
-                    }
-                });
-            });
-        }
-
-        return this._continueTriggerEvaluation();
-    }
-
-    _continueTriggerEvaluation(resolve = null) {
-        // FIX 158/159: Detect Intuitive Launch (Fresh Visit) and Minimize Latency
+        // --- ATOMIC VISIT DETECTION ---
+        // We detect "New Visit" synchronously at the START of evaluation.
+        // This prevents two rapid calls (e.g. init + focus) from both seeing "no flag".
         const isNewVisit = !this.isIframe && !sessionStorage.getItem('cure_launch_counted');
         if (isNewVisit) {
             sessionStorage.setItem('cure_launch_counted', '1');
         }
 
-        const outerResolve = resolve;
-        return new Promise(resolve => {
-            const finalResolve = (val) => {
-                if (outerResolve) outerResolve(val);
-                resolve(val);
-            };
-
-            // MEGA FIX: Parallelize all critical initialization checks to minimize overlay delay
+        this._pEvaluation = new Promise(resolve => {
             const launchWindow = (this.settings.reminderTriggers?.launchLimit?.windowSeconds) || 3600;
             const siteWindow = this.settings.hardLockTriggers?.sessionLimit?.windowSeconds || 0;
             const browserWindow = this.settings.hardLockTriggers?.browserLimit?.windowSeconds || 86400;
 
+            // MEGA FIX: Parallelize ALL critical state checks (including Reset Status)
+            const pReset = this.isIframe ? Promise.resolve(null) : new Promise(r => this.safeSendMessage({ action: 'checkResetStatus', hostname: window.location.hostname }, r));
             const pLock = new Promise(r => this.safeSendMessage({ action: 'getLockState', hostname: window.location.hostname }, r));
             const pStats = new Promise(r => this.safeSendMessage({ 
                 action: 'trackLaunch', 
@@ -1266,54 +1278,66 @@ class CureVault {
             }, r));
             const pReminder = new Promise(r => this.safeSendMessage({ action: 'getReminderState', hostname: window.location.hostname }, r));
 
-            Promise.all([pLock, pStats, pReminder]).then(([lockResponse, response, reminderRes]) => {
-                if (!lockResponse || !response) return finalResolve();
+            Promise.all([pReset, pLock, pStats, pReminder]).then(([resReset, lockResponse, response, reminderRes]) => {
+                // 1. Handle Background-Enforced Reset
+                if (resReset && resReset.needsReset) {
+                    sessionStorage.setItem('cure_needs_reset', 'true');
+                    sessionStorage.setItem(`cure_needs_reset_${window.location.hostname}`, 'true');
+                    this.stateHardLock('limit', true);
+                    return resolve();
+                }
 
-                // 1. Handle Cross-Tab Reminder Sync
+                if (!lockResponse || !response) return resolve();
+
+                // 2. Handle Cross-Tab Reminder Sync
                 if (reminderRes && reminderRes.active) {
                     sessionStorage.setItem('cure_reminder_active', '1');
-                    this.renderReminderOverlay(reminderRes.value, reminderRes.type, true);
+                    // FIX: Always use GROUND TRUTH for launch counts if a reminder is active.
+                    // This prevents the "stuck at 4" bug by showing 5 if the user reloads without unlocking.
+                    const displayValue = (reminderRes.type === 'launch') ? (response?.currentLaunches || reminderRes.value) : reminderRes.value;
+                    
+                    // If we have a newer count than the background, broadcast it to sync other tabs
+                    const needsUpdate = (reminderRes.type === 'launch' && response?.currentLaunches > reminderRes.value);
+                    this.renderReminderOverlay(displayValue, reminderRes.type, !needsUpdate); 
+                    return resolve(); 
                 }
 
-                // 2. Handle Whitelisting & Iframe logic
+                // 3. Handle Whitelisting & Iframe logic
                 if (lockResponse.tabWhitelisted && this.isIframe) {
                     this.removeOverlay();
-                    return finalResolve();
+                    return resolve();
                 }
 
-                // 3. Handle Sticky Unlock (Reward) logic
+                // 4. Handle Sticky Unlock (Reward) logic
                 if (lockResponse.unlocked === true) {
                     const rewardSecondsGranted = this.originalRewardSeconds || 0;
                     const rewardConsumed = rewardSecondsGranted > 0 && this.activeSeconds >= rewardSecondsGranted;
                     
                     if (rewardConsumed) {
                         this.stickyUnlocked = false;
-                        sessionStorage.removeItem('cure_sticky_unlocked');
-                        sessionStorage.removeItem('cure_success_page_active');
-                        this.originalRewardSeconds = 0;
-                        this.sessionBaseSeconds = 0;
+                        this.resetTempUnlockStates();
                         this.safeSendMessage({ action: 'clearLockState', hostname: window.location.hostname });
                     } else {
                         this.stickyUnlocked = true;
                         sessionStorage.setItem(`cure_sticky_unlocked_${window.location.hostname}`, 'true');
                         if (sessionStorage.getItem('cure_success_page_active') === 'true') {
                             this.renderSuccess(this.settings.unlockReward || 5);
-                            return finalResolve();
+                            return resolve();
                         }
                         const root = this.ensureShadow();
                         const hasOverlay = root && root.getElementById(this.overlayId);
                         if (hasOverlay) this.removeOverlay();
                         if (!this.timerInterval) this.stateMonitor();
-                        return finalResolve();
+                        return resolve();
                     }
                 } else if (this.isIframe && lockResponse.unlocked) {
                     this.removeOverlay();
                 }
 
-                // 4. Check Hard Lock Status
+                // 5. Check Hard Lock Status
                 if (lockResponse.locked) {
                     this.stateHardLock(lockResponse.lockState?.reason || 'limit', true);
-                    return finalResolve();
+                    return resolve();
                 }
 
                 const isWhitelisted = this.isWhitelisted();
@@ -1323,74 +1347,125 @@ class CureVault {
 
                 if (!anyFeatureOn) {
                     this.removeOverlay();
-                    return finalResolve();
+                    return resolve();
                 }
 
                 if (isWhitelisted && !this.settings.pauseWhitelist && !this.settings.reminderWhitelist) {
                     this.removeOverlay();
-                    return finalResolve();
+                    return resolve();
                 }
 
-                // Sync local stats with ground truth from background
-                if (response) {
-                    this.windowedSiteSeconds = response.siteSeconds || 0;
-                    if (this.mode === 'up') {
-                        this.activeSeconds = this.windowedSiteSeconds;
-                    }
-                    this.windowedBrowserSeconds = response.browserSeconds || 0;
-                }
+                // Sync local stats
+                this.windowedSiteSeconds = response.siteSeconds || 0;
+                if (this.mode === 'up') this.activeSeconds = this.windowedSiteSeconds;
+                this.windowedBrowserSeconds = response.browserSeconds || 0;
 
-                // 5. Evaluate All Triggers (Hard Lock, Launch Reminder, Pause)
+                // 6. Evaluate All Triggers (Hard Lock)
                 const triggerReason = this.checkAnyTrigger();
                 if (triggerReason) {
                     sessionStorage.removeItem('cure_reminder_active');
-                    localStorage.removeItem('cure_reminder_active');
                     this.stateHardLock(triggerReason === true ? null : triggerReason);
-                    return finalResolve();
+                    return resolve();
                 }
 
-                // 6. Check Additional Reminders (Launch Limit specifically)
                 const masterRemindersOn = this.settings.masterReminders !== false;
                 const rTriggers = this.settings.reminderTriggers || {};
                 const currentLaunches = response?.currentLaunches || 0;
+                const browserSecs = response?.browserSeconds || 0;
 
-                if (masterRemindersOn && rTriggers.launchLimit?.enabled && currentLaunches >= rTriggers.launchLimit.value) {
-                    // Check if already dismissed
-                    const dismissKey = `cure_global_remind_dismissed_launch_${window.location.hostname}_${currentLaunches}`;
-                    if (!response?.globalDismissals?.[dismissKey]) {
-                        this.renderReminderOverlay(currentLaunches, 'launch');
-                        return finalResolve();
+                if (masterRemindersOn) {
+                    // 7.1 Site Activity Reminder (Handled in stateMonitor/checkReminders, 
+                    // but we ensure ground truth sync here for browser/launch)
+
+                    // 7.2 Screen Time Reminder (Browser Limit)
+                    if (rTriggers.browserLimit?.enabled && browserSecs > 0) {
+                        const limitSecs = rTriggers.browserLimit.value * 60;
+                        const rType = this.settings.reminderBrowserType || 'repeating';
+                        let shouldTrigger = false;
+
+                        if (rType === 'once') {
+                            if (browserSecs >= limitSecs && !sessionStorage.getItem('cure_remind_browser_shown')) {
+                                shouldTrigger = true;
+                            }
+                        } else if (browserSecs >= limitSecs && Math.floor(browserSecs / 60) % rTriggers.browserLimit.value === 0) {
+                            // Only trigger once per minute bucket
+                            const minsSpent = Math.floor(browserSecs / 60);
+                            const lastBucket = sessionStorage.getItem('cure_remind_browser_last_eval');
+                            if (lastBucket !== minsSpent.toString()) {
+                                shouldTrigger = true;
+                                sessionStorage.setItem('cure_remind_browser_last_eval', minsSpent.toString());
+                            }
+                        }
+
+                        if (shouldTrigger) {
+                            const minsSpent = Math.floor(browserSecs / 60);
+                            const dismissKey = `cure_global_remind_dismissed_browser_${minsSpent}`;
+                            if (!response?.globalDismissals?.[dismissKey]) {
+                                this.renderReminderOverlay(minsSpent, 'browser');
+                                return resolve();
+                            }
+                        }
+                    }
+
+                    // 7.3 Launch Count Reminder (Visit Limit)
+                    if (rTriggers.launchLimit?.enabled) {
+                        const limit = rTriggers.launchLimit.value;
+                        const rType = rTriggers.launchLimit.type || 'repeating';
+                        let shouldTrigger = false;
+
+                        if (rType === 'once') {
+                            if (currentLaunches >= limit && !sessionStorage.getItem(`cure_remind_launch_shown_${limit}`)) {
+                                shouldTrigger = true;
+                            }
+                        } else if (currentLaunches >= limit && currentLaunches % limit === 0) {
+                            shouldTrigger = true;
+                        }
+
+                        if (shouldTrigger) {
+                            const dismissKey = `cure_global_remind_dismissed_launch_${window.location.hostname}_${currentLaunches}`;
+                            if (!response?.globalDismissals?.[dismissKey]) {
+                                this.renderReminderOverlay(currentLaunches, 'launch');
+                                return resolve();
+                            }
+                        }
                     }
                 }
 
-                // 7. Check Pause Triggers (Launch & Browser)
+                // 8. Check Pause Triggers
                 const pauseTriggers = this.settings.pauseTriggers || {};
-                const browserSecs = response?.browserSeconds || 0;
                 const canShowPause = !this.isWhitelisted() || !!this.settings.pauseWhitelist;
 
                 if (canShowPause && this.settings.masterPause !== false) {
                     if (pauseTriggers.launchLimit?.enabled && currentLaunches >= pauseTriggers.launchLimit.value) {
                         this.stateBreathingRoom('launch');
-                        return finalResolve();
+                        return resolve();
                     }
                     if (pauseTriggers.browserLimit?.enabled && browserSecs >= (pauseTriggers.browserLimit.value * 60)) {
                         this.stateBreathingRoom('browser');
-                        return finalResolve();
+                        return resolve();
                     }
                 }
 
-                // 8. Standard Frequency Pause
+                // 9. Standard Frequency Pause
                 if (this.settings.masterPause !== false && this.shouldShowBreathingRoom(response)) {
                     this.stateBreathingRoom('always');
-                    return finalResolve();
+                    return resolve();
                 }
 
-                // Final cleanup
                 if (!this.timerInterval) this.stateMonitor();
-                finalResolve();
+                resolve();
             });
+        }).finally(() => {
+            this._pEvaluation = null;
+            if (this._pendingReEval) {
+                this._pendingReEval = false;
+                this.evaluateAllTriggers();
+            }
         });
+
+        return this._pEvaluation;
     }
+
 
     checkAnyTrigger() {
         // Ultimate overrides: never block if allowlisted or master switch is OFF
@@ -1672,7 +1747,7 @@ class CureVault {
     // --- STATE 1: BREATHING ROOM ---
     stateBreathingRoom(reason = 'standard', forced = false) {
         let message = "Take a breath.";
-        if (reason === 'launch') message = `Pause: You've visited ${this.settings.pauseTriggers?.launchLimit?.value || 5} times recently.`;
+        if (reason === 'launch') message = `Pause: You've visited ${this.settings.pauseTriggers?.launchLimit?.value || 5} times so far.`;
         if (reason === 'browser') message = `Pause: You've been browsing for over ${this.settings.pauseTriggers?.browserLimit?.value || 120} mins today.`;
 
         // Mark as shown for the frequency-based triggers to avoid re-triggering on settings update
@@ -2839,7 +2914,7 @@ class CureVault {
             const windowText = this.settings.reminderTriggers?.launchLimit?.windowSeconds === 86400 ? 'today' : 'this hour';
             const timesWord = value === 1 ? 'time' : 'times';
             timeUnit = `${timesWord} ${windowText}`;
-            subtitle = `You have visited ${site}`;
+            subtitle = `Total visits to ${site} this hour`;
             continueText = "Continue Browsing (Unlock Site)";
         } else {
             // Default: 'time' (Site Activity)
@@ -2937,9 +3012,11 @@ class CureVault {
 
         const btn = this.shadowRoot.getElementById('cure-reminder-continue-btn');
         if (btn) {
-            btn.onclick = () => {
+            btn.onclick = async () => {
                 sessionStorage.removeItem('cure_reminder_active');
-                
+                sessionStorage.removeItem('cure_launch_counted'); // FIX: Allow re-counting for iterative launch
+                this.recentlyDismissedLaunch = Date.now(); // Guard against rapid re-trigger
+
                 // FIX 128/156: Broadcast dismissal to ALL tabs (hostname-specific or global)
                 this.safeSendMessage({
                     action: 'broadcastReminderState',
@@ -2950,7 +3027,6 @@ class CureVault {
                 
                 // If this is a global reminder (browser/launch), notify background to dismiss it for ALL tabs
                 if (type === 'browser' || type === 'launch') {
-                    const bucket = type === 'browser' ? value : value; 
                     const hostPart = type === 'launch' ? `_${window.location.hostname}_` : '_';
                     this.safeSendMessage({ 
                         action: 'sessionStorageProxy', 
@@ -2959,19 +3035,13 @@ class CureVault {
                         value: true 
                     });
                     
-                    // FIX 168: Clear launch history for a "clean slate" after unlocking
-                    if (type === 'launch') {
-                        console.log('[Cure] Sending clearLaunchHistory for:', window.location.hostname);
-                        this.safeSendMessage({ 
-                            action: 'clearLaunchHistory', 
-                            hostname: window.location.hostname 
-                        });
-                    }
                 }
 
                 this.removeOverlay();
                 document.body.style.overflow = '';
-                this.stateMonitor();
+                
+                // Small delay before monitor restarts to ensure background state is synced/pruned
+                setTimeout(() => this.stateMonitor(), 200);
             };
         }
     }

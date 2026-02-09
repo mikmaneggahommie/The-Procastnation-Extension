@@ -12,6 +12,9 @@ let g_activeGlobalReminder = null; // FIX 155: Track active global reminder (bro
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
 
+// Helper: Standardize hostname (strip www.)
+const cleanHost = (host) => host ? host.replace(/^www\./, '') : '';
+
 // Load Snapshots on Start
 chrome.storage.local.get(['lockSnapshots', 'systemInstanceId'], res => {
     if (res.lockSnapshots) g_lockSnapshots = res.lockSnapshots;
@@ -78,17 +81,22 @@ async function getDailyStats() {
 
 let g_saveTimeout = null;
 
-async function saveStats() {
-    if (g_dailyStats) {
-        // FIX: Debounce High-Frequency I/O
-        // With 50+ tabs, direct writes cause browser lag.
-        // We buffer updates in memory and commit to disk only once every 2 seconds.
-        if (g_saveTimeout) clearTimeout(g_saveTimeout);
-        
-        g_saveTimeout = setTimeout(() => {
-            chrome.storage.local.set({ dailyStats: g_dailyStats });
+async function saveStats(force = false) {
+    if (!g_dailyStats) return;
+    
+    if (g_saveTimeout) clearTimeout(g_saveTimeout);
+    
+    if (force) {
+        await storage.local.set({ dailyStats: g_dailyStats });
+        g_saveTimeout = null;
+    } else {
+        // Debounce High-Frequency I/O
+        g_saveTimeout = setTimeout(async () => {
+            if (g_dailyStats) {
+                await storage.local.set({ dailyStats: g_dailyStats });
+            }
             g_saveTimeout = null;
-        }, 2000);
+        }, 1000); // Reduced to 1s for better responsiveness
     }
 }
 
@@ -113,7 +121,7 @@ const DEFAULT_SETTINGS = {
     reminderInterval: 15, // Minutes
     reminderIntervalEnabled: true,
     reminderIntervalType: 'repeating',
-    reminderBrowserType: 'once', 
+    reminderBrowserType: 'repeating', 
     typingDifficulty: 50, // Characters (Legacy)
     reminderStyle: 'overlay', // Changed to overlay by default
     soundEnabled: true,
@@ -232,7 +240,8 @@ async function updateBlockingRules(blacklist) {
 // Handle messages from content scripts/popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'challengeStarted') {
-        const hostname = request.hostname;
+        const rawHost = request.hostname;
+        const hostname = cleanHost(rawHost);
         const tabId = sender.tab?.id;
         if (hostname && tabId && chrome.storage.session) {
             // Track this challenge extension-wide
@@ -240,9 +249,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             
             // ANTI-CHEAT: Snapshot rules NOW. 
             // The site is now stuck with these until the challenge is finished.
-            const cleanHost = hostname.replace(/^www\./, '');
-            if (!g_lockSnapshots[cleanHost]) {
-                g_lockSnapshots[cleanHost] = JSON.parse(JSON.stringify(g_settingsCache || DEFAULT_SETTINGS));
+            if (!g_lockSnapshots[hostname]) {
+                g_lockSnapshots[hostname] = JSON.parse(JSON.stringify(g_settingsCache || DEFAULT_SETTINGS));
                 saveSnapshots();
             }
 
@@ -258,7 +266,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'challengeFinished') {
-        const hostname = request.hostname;
+        const hostname = cleanHost(request.hostname);
         const tabId = sender.tab?.id;
         if (tabId && chrome.storage.session) {
             chrome.storage.session.remove([`cure_challenge_active_${tabId}`, `cure_needs_reset_${hostname}`]);
@@ -274,7 +282,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'checkResetStatus') {
-        const hostname = request.hostname;
+        const hostname = cleanHost(request.hostname);
         // console.debug(`[Cure] checkResetStatus called for: ${hostname}`);
         storage.session.get(`cure_needs_reset_${hostname}`).then(res => {
             const needsReset = res[`cure_needs_reset_${hostname}`] === true;
@@ -288,14 +296,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'clearResetFlag') {
-        const hostname = request.hostname;
+        const hostname = cleanHost(request.hostname);
         if (chrome.storage.session) {
             chrome.storage.session.remove(`cure_needs_reset_${hostname}`);
             // Also notify tabs on this hostname to stop showing the toast
             chrome.tabs.query({}, (tabs) => {
                 tabs.forEach(t => {
                     try {
-                        if (t.url && new URL(t.url).hostname.replace('www.', '') === hostname.replace('www.', '')) {
+                        if (t.url && cleanHost(new URL(t.url).hostname) === hostname) {
                             chrome.tabs.sendMessage(t.id, { action: 'dismissResetToast' }).catch(() => {});
                         }
                     } catch(e) {}
@@ -307,7 +315,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'setResetFlag') {
-        const hostname = request.hostname;
+        const hostname = cleanHost(request.hostname);
         if (chrome.storage.session && hostname) {
             chrome.storage.session.set({ [`cure_needs_reset_${hostname}`]: true });
             console.log(`[Cure] Global reset flag set for ${hostname}`);
@@ -341,16 +349,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'getSettings') {
         const sendEffectiveSettings = (currentSettings) => {
-            let hostname = request.hostname;
-            if (!hostname && sender.tab && sender.tab.url) {
+            let rawHost = request.hostname;
+            if (!rawHost && sender.tab && sender.tab.url) {
                 try {
-                    hostname = new URL(sender.tab.url).hostname;
+                    rawHost = new URL(sender.tab.url).hostname;
                 } catch (e) {}
             }
+            const hostname = cleanHost(rawHost);
             
             let finalSettings = currentSettings || DEFAULT_SETTINGS;
             if (hostname) {
-                const cleanHost = hostname.replace(/^www\./, '');
                 // AUTHORITATIVE SNAPSHOT: If locked, site ONLY sees the frozen rules.
                 if (g_lockSnapshots[cleanHost]) {
                     finalSettings = g_lockSnapshots[cleanHost];
@@ -384,7 +392,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'trackLaunch') {
-        const hostname = request.hostname;
+        const hostname = cleanHost(request.hostname);
         (async () => {
             try {
                 const settings = await ensureSettings();
@@ -445,32 +453,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // FIX 158/159/161: Intuitive & Iterative Launch. 
                 // Record if tracking is needed and (fresh session OR explicit isNewVisit)
                 if (trackingNeeded && (!currentSessionActive || request.isNewVisit)) {
-                    // CALCULATE MAX WINDOW: We must prune based on the LARGEST active limit window
-                    // to ensure long-window reminders (e.g. daily) aren't prematurely deleted by short-window locks (e.g. hourly).
-                    const windows = [];
-                    if (hardLockActive) windows.push(hardTriggers.launchLimit?.windowSeconds || 3600);
-                    if (pauseActive) windows.push(pauseTriggers.launchLimit?.windowSeconds || 3600);
-                    if (reminderActive) windows.push(reminderTriggers.launchLimit?.windowSeconds || 3600);
-                    
-                    const maxWindowSecs = Math.max(...windows, 3600); // Default to at least 1 hour
-                    const maxWindowMs = maxWindowSecs * 1000;
-                    
-                    // Prune history
-                    if (!siteStats.launches) siteStats.launches = [];
-                    siteStats.launches = siteStats.launches.filter(ts => now - ts < maxWindowMs);
+                    // FIX: "Post-Unlock Grace". If we just unlocked, don't increment until a NEW session starts.
+                    if (siteStats.activeSession?.unlocked && !request.isNewVisit) {
+                        // Just update activity timestamp, don't push a launch
+                        siteStats.activeSession.lastActive = now;
+                    } else {
+                        // CALCULATE MAX WINDOW: We must prune based on the LARGEST active limit window
+                        // to ensure long-window reminders (e.g. daily) aren't prematurely deleted by short-window locks (e.g. hourly).
+                        const windows = [];
+                        if (hardLockActive) windows.push(hardTriggers.launchLimit?.windowSeconds || 3600);
+                        if (pauseActive) windows.push(pauseTriggers.launchLimit?.windowSeconds || 3600);
+                        if (reminderActive) windows.push(reminderTriggers.launchLimit?.windowSeconds || 3600);
+                        
+                        const maxWindowSecs = Math.max(...windows, 3600); // Default to at least 1 hour
+                        const maxWindowMs = maxWindowSecs * 1000;
+                        
+                        // Prune history
+                        if (!siteStats.launches) siteStats.launches = [];
+                        siteStats.launches = siteStats.launches.filter(ts => now - ts < maxWindowMs);
 
-                    // RECORD LAUNCH: Increment every time, even if current count exceeds the limit.
-                    // This satisfies the requirement to see "3 visits", "4 visits" while the overlay is showing.
-                    siteStats.launches.push(now);
-                    
-                    if (!siteStats.activeSession) {
-                        siteStats.activeSession = { startTime: now, lastActive: now };
+                        // RECORD LAUNCH: Increment every time, even if current count exceeds the limit.
+                        // This satisfies the requirement to see "3 visits", "4 visits" while the overlay is showing.
+                        siteStats.launches.push(now);
+                        
+                        if (!siteStats.activeSession) {
+                            siteStats.activeSession = { startTime: now, lastActive: now };
+                        } else {
+                            // If we had a session but it was nullified/cleared, ensure lastActive is updated
+                            siteStats.activeSession.lastActive = now;
+                        }
                     }
                     siteStats.lastActiveAt = now;
                     currentSessionActive = true;
 
                     // If we just hit the hard lock limit, mark as locked immediately
-                    if (hardLockActive && siteStats.launches.length >= hardTriggers.launchLimit.value) {
+                    if (hardLockActive && siteStats.launches.length >= (hardTriggers.launchLimit?.value || 3)) {
                         isLocked = true;
                     }
                 }
@@ -532,7 +549,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'startRewardSession') {
-        const hostname = request.hostname;
+        const hostname = cleanHost(request.hostname);
         (async () => {
             const stats = await getDailyStats();
             // Start logic...
@@ -549,7 +566,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'trackUsage') {
-        const { hostname, deltaSiteSeconds, deltaBrowserSeconds } = request;
+        const { hostname: rawHost, deltaSiteSeconds, deltaBrowserSeconds } = request;
+        const hostname = cleanHost(rawHost);
         (async () => {
              try {
                  await ensureSettings();
@@ -614,7 +632,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'getWindowedUsage') {
-        const { hostname, siteWindowSeconds, browserWindowSeconds } = request;
+        const { hostname: rawHost, siteWindowSeconds, browserWindowSeconds } = request;
+        const hostname = cleanHost(rawHost);
         (async () => {
             try {
                 const stats = await getDailyStats();
@@ -674,7 +693,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     if (tab.id && tab.url) {
                         try {
                             const url = new URL(tab.url);
-                            const tabHost = url.hostname.replace(/^www\./, '');
+                            const tabHost = cleanHost(url.hostname);
                             // AUTHORITATIVE BROADCAST: Send tab-specific frozen settings if locked.
                             const finalSettings = g_lockSnapshots[tabHost] || newSettings;
                             chrome.tabs.sendMessage(tab.id, {
@@ -752,7 +771,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // --- LOCK STATE MANAGEMENT (Prevents refresh bypass) ---
     if (request.action === 'setLockState') {
-        const { hostname, windowSeconds, reason } = request;
+        const { hostname: rawHost, windowSeconds, reason } = request;
+        const hostname = cleanHost(rawHost);
         const key = `lock_${hostname}`;
         const now = Date.now();
 
@@ -766,7 +786,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             unlocked: false
         };
 
-        const cleanHost = hostname.replace(/^www\./, '');
         // REMOVED: snapshotting here. 
         // We now snapshot only in 'challengeStarted' to allow reactive whitelisting 
         // while on the Decision ("Time's Up") screen.
@@ -793,7 +812,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
             try {
                 const url = new URL(tab.url);
-                const hostname = url.hostname.replace(/^www\./, '');
+                const hostname = cleanHost(url.hostname);
                 const key = `lock_${hostname}`;
                 const result = await storage.local.get([key]);
                 const lockState = result[key];
@@ -811,7 +830,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'getLockState') {
-        const { hostname } = request;
+        const hostname = cleanHost(request.hostname);
         const key = `lock_${hostname}`;
 
         (async () => {
@@ -856,7 +875,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'broadcastLockState') {
-        const { hostname, locked } = request;
+        const hostname = cleanHost(request.hostname);
+        const locked = request.locked;
         const currentTabId = sender.tab?.id;
 
         const broadcastToAllFrames = (tabId) => {
@@ -910,22 +930,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'broadcastReminderState') {
         const { hostname, show, value, type } = request;
         const currentTabId = sender.tab?.id;
-        const cleanHost = hostname.replace(/^www\./, '');
-
+        const cleanedHostname = cleanHost(hostname);
         const isGlobal = type === 'browser';
-
-        // FIX 129/155: Track reminder state
+        
+        // FIX 129/155: Track reminder state using cleaned hostname for consistency
         if (show) {
             if (isGlobal) {
                 g_activeGlobalReminder = { value, type };
             } else {
-                g_activeReminders.set(cleanHost, { value, type, active: true });
+                g_activeReminders.set(cleanedHostname, { value, type, active: true });
             }
         } else {
             if (isGlobal) {
                 g_activeGlobalReminder = null;
             } else {
-                g_activeReminders.delete(cleanHost);
+                g_activeReminders.delete(cleanedHostname);
             }
         }
 
@@ -949,20 +968,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         // Check if frame URL matches the hostname for overlay display
                         try {
                             const frameUrl = new URL(frame.url);
-                            const frameHost = frameUrl.hostname.replace(/^www\./, '');
+                            const frameHost = cleanHost(frameUrl.hostname);
                             
-                            if (isGlobal || frameHost === cleanHost) {
+                            if (isGlobal || frameHost === cleanedHostname) {
                                 if (show) {
                                     chrome.tabs.sendMessage(tabId, {
                                         action: 'forceReminderOverlay',
-                                        hostname: isGlobal ? 'global' : cleanHost,
+                                        hostname: isGlobal ? 'global' : cleanedHostname,
                                         value: value,
                                         type: type
                                     }, { frameId: frame.frameId }).catch(() => {});
                                 } else {
                                     chrome.tabs.sendMessage(tabId, {
                                         action: 'dismissReminderOverlay',
-                                        hostname: isGlobal ? 'global' : cleanHost
+                                        hostname: isGlobal ? 'global' : cleanedHostname
                                     }, { frameId: frame.frameId }).catch(() => {});
                                 }
                             }
@@ -996,15 +1015,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     // FIX 129/155: Query for active reminder state (used by tabs/iframes on load)
     if (request.action === 'getReminderState') {
-        const cleanHost = request.hostname?.replace(/^www\./, '');
-        const siteState = g_activeReminders.get(cleanHost);
+        const hostname = cleanHost(request.hostname);
+        const siteState = g_activeReminders.get(hostname);
         const globalState = g_activeGlobalReminder;
 
         // Global reminder (if active) takes precedence for reporting
         if (globalState) {
             sendResponse({ active: true, value: globalState.value, type: globalState.type, isGlobal: true });
         } else if (siteState) {
-            sendResponse({ active: true, value: siteState.value, type: siteState.type, isGlobal: false });
+            sendResponse({ active: true, value: siteState.value, type: siteState.type, isGlobal: false, hostname: hostname });
         } else {
             sendResponse({ active: false });
         }
@@ -1014,23 +1033,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // FIX 168: Clear launch history when user unlocks a launch reminder
     // This creates a "clean slate" so the next reminder triggers after another full cycle
     if (request.action === 'clearLaunchHistory') {
-        const hostname = request.hostname?.replace(/^www\./, '');
+        const hostname = cleanHost(request.hostname);
         console.log('[Cure] clearLaunchHistory called for:', hostname);
         if (hostname) {
             (async () => {
                 const stats = await getDailyStats();
-                console.log('[Cure] Before clear, launches:', stats.sites[hostname]?.launches?.length || 0);
                 if (stats.sites[hostname]) {
+                    console.log('[Cure] Clearing stats for:', hostname);
                     stats.sites[hostname].launches = [];
-                    saveStats();
-                    console.log('[Cure] After clear, launches:', stats.sites[hostname].launches.length);
+                    // Preserve session but mark as "post-reset" so trackLaunch doesn't immediately re-count?
+                    // Actually, just clearing launches is enough if trackLaunch is guarded.
+                    stats.sites[hostname].activeSession = { startTime: Date.now(), lastActive: Date.now(), unlocked: true }; 
+                    await saveStats(true); 
                 } else {
-                    console.log('[Cure] No site stats found for:', hostname, 'Available sites:', Object.keys(stats.sites));
+                    // Site might not be in stats yet, but we want a clean slate for it
+                    stats.sites[hostname] = { usageHistory: [], launches: [], lastActiveAt: Date.now(), activeSession: { startTime: Date.now(), lastActive: Date.now(), unlocked: true } };
+                    await saveStats(true);
                 }
                 sendResponse({ success: true });
             })();
         } else {
-            console.log('[Cure] clearLaunchHistory: no hostname provided');
             sendResponse({ success: false });
         }
         return true;
@@ -1044,7 +1066,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'markUnlocked') {
-        const { hostname } = request;
+        const hostname = cleanHost(request.hostname);
         const key = `lock_${hostname}`;
 
         chrome.storage.local.get([key], (result) => {
@@ -1062,7 +1084,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'finishChallenge') {
-        const { hostname } = request;
+        const hostname = cleanHost(request.hostname);
         const key = `lock_${hostname}`;
 
         // 1. Clear Global Registry First (The penalty flag)
@@ -1088,8 +1110,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             updates['passiveData'] = passiveData;
 
             // ANTI-CHEAT: Debt Paid. Clear the snapshot.
-            const cleanHost = hostname.replace(/^www\./, '');
-            delete g_lockSnapshots[cleanHost];
+            const hostnameClean = cleanHost(hostname);
+            delete g_lockSnapshots[hostnameClean];
             saveSnapshots();
 
             chrome.storage.local.set(updates, () => {
@@ -1120,12 +1142,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'clearLockState') {
-        const { hostname } = request;
+        const hostname = cleanHost(request.hostname);
         const key = `lock_${hostname}`;
         
         // Anti-Cheat: Also clear snapshot if explicitly cleared
-        const cleanHost = hostname.replace(/^www\./, '');
-        delete g_lockSnapshots[cleanHost];
+        delete g_lockSnapshots[hostname];
         saveSnapshots();
 
         chrome.storage.local.remove(key, () => {
@@ -1206,12 +1227,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'forceUnlockSite') {
-        const { hostname, tabId } = request;
-        if (!hostname) {
+        const rawHost = request.hostname;
+        const tabId = request.tabId;
+        if (!rawHost) {
             sendResponse({ success: false });
             return true;
         }
 
+        const hostname = cleanHost(rawHost);
         const key = `lock_${hostname}`;
         const timerKey = `cure_timer_${hostname}`;
 
@@ -1232,10 +1255,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         try {
                             // Only target tabs that match the hostname
                             const tabUrl = new URL(tab.url);
-                            const tabHost = tabUrl.hostname.replace(/^www\./, '');
-                            const targetHost = hostname.replace(/^www\./, '');
+                            const tabHost = cleanHost(tabUrl.hostname);
                             
-                            if (tabHost === targetHost || tabHost.endsWith('.' + targetHost)) {
+                            if (tabHost === hostname || tabHost.endsWith('.' + hostname)) {
                                 chrome.tabs.sendMessage(tab.id, { 
                                     action: 'challengeCompleted', 
                                     hostname: hostname 
@@ -1331,8 +1353,8 @@ async function handleTabAbandonment(tabId, newUrl) {
             try {
                 const url = new URL(newUrl);
                 // Subdomain insensitive check (e.g. www.youtube.com vs youtube.com)
-                const newHost = url.hostname.replace('www.', '');
-                const oldHost = activeHostname.replace('www.', '');
+                const newHost = cleanHost(url.hostname);
+                const oldHost = cleanHost(activeHostname);
                 if (newHost === oldHost) isSameSite = true;
             } catch (e) {
                 // If it's not a valid URL (e.g. chrome://), it's definitely not the same site

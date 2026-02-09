@@ -597,8 +597,10 @@ function populateInputs() {
     // Reminder Triggers
     setChk('reminder-trigger-launch-enable', reminderTriggers.launchLimit?.enabled);
     setVal('reminder-trigger-launch-val', reminderTriggers.launchLimit?.value || 5);
+    setVal('reminder-launch-type', reminderTriggers.launchLimit?.type || 'repeating');
     setVal('reminder-trigger-launch-window', reminderTriggers.launchLimit?.windowSeconds || 3600);
 
+    setVal('reminder-browser-type', currentSettings.reminderBrowserType || 'repeating');
     setChk('reminder-trigger-browser-enable', reminderTriggers.browserLimit?.enabled);
     setConvertedVal('reminder-trigger-browser-val', 'reminder-trigger-browser-unit', (reminderTriggers.browserLimit?.value || 120) * 60);
 
@@ -904,14 +906,14 @@ function setupListeners() {
 
     const helpContent = {
         'pause-duration': { title: 'Pause Duration', text: 'A mandatory waiting period before you can access a distracting site. Also includes Frequency settings: "Every page load" shows the pause loop on every navigation, while "The first page load only" shows it only when you first enter the site for that browsing session.', icon: '🧘‍♂️' },
-        'pause-launch-trigger': { title: 'Launch Count Trigger', text: 'Automatically triggers the Pause Screen after you visit a site a certain number of times per hour. Great for caching "habitual checks".', icon: '🚀' },
-        'pause-screentime-trigger': { title: 'Screen Time Trigger', text: 'Automatically triggers the Pause Screen after you spend a certain amount of time browsing today.', icon: '⏱️' },
+        'pause-launch-trigger': { title: 'Launch Count Trigger', text: 'Automatically triggers the Pause Screen every time you visit a site a certain number of times per hour. Great for caching "habitual checks".', icon: '🚀' },
+        'pause-screentime-trigger': { title: 'Screen Time Trigger', text: 'Automatically triggers the Pause Screen every time you spend a certain amount of time browsing today.', icon: '⏱️' },
         'pause-allowlist': { title: 'Enable on Allowlist', text: 'By default, "productive" allowlisted sites skip the pause screen. Turn this on if you want to be paused on those sites too.', icon: '✅' },
         
         'reminder-interval': { title: 'Site Activity Reminder', text: 'Alerts based specifically on how long you have been on the current website. You can set this to repeat every X minutes, or fire just once as a "one-off" alarm.', icon: '⏳' },
         'reminder-style': { title: 'Appearance', text: 'Choose "Overlay" for a full-screen interrupt or "Toast" for a subtle notification at the bottom.', icon: '🎨' },
         'reminder-screentime-trigger': { title: 'Screen Time Reminder', text: 'Get an alert when your total browsing time today hits a certain limit. Now supports repeating alerts if you want to be reminded multiple times.', icon: '🛑' },
-        'reminder-launch-trigger': { title: 'Launch Count Reminder', text: 'Get a specific alert when you visit sites too frequently (e.g. 10 times in an hour).', icon: '🚀' },
+        'reminder-launch-trigger': { title: 'Launch Count Reminder', text: 'Get a specific alert every time you visit sites too frequently (e.g. 10 times in an hour).', icon: '🚀' },
         'reminder-allowlist': { title: 'Enable on Allowlist', text: 'By default, allowlisted sites do not trigger reminders. Turn this on to get reminders even on productive sites.', icon: '✅' },
 
         // Main Menu Keys
@@ -1762,7 +1764,8 @@ function setupNewViewListeners() {
             launchLimit: {
                 enabled: document.getElementById('reminder-trigger-launch-enable').checked,
                 value: parseInt(document.getElementById('reminder-trigger-launch-val').value) || 5,
-                windowSeconds: parseInt(document.getElementById('reminder-trigger-launch-window').value) || 3600
+                windowSeconds: parseInt(document.getElementById('reminder-trigger-launch-window').value) || 3600,
+                type: document.getElementById('reminder-launch-type').value || 'repeating'
             },
             browserLimit: {
                 enabled: document.getElementById('reminder-trigger-browser-enable').checked,
