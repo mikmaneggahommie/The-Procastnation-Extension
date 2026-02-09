@@ -652,7 +652,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         .filter(c => now - c.ts < windowMs)
                         .reduce((acc, c) => acc + c.dur, 0);
                 }
-                sendResponse({ siteSeconds: siteSum, browserSeconds: browserSum });
+                const res = { siteSeconds: siteSum, browserSeconds: browserSum };
+                
+                // FIX 188: Provide the current reminder state so tabs can sync their thresholds
+                const siteState = g_activeReminders.get(hostname);
+                if (siteState) {
+                    res.reminderActive = siteState.active;
+                    res.reminderValue = siteState.value;
+                    res.reminderStyle = siteState.reminderStyle;
+                }
+                
+                sendResponse(res);
             } catch (e) {
                 console.error('[Cure] getWindowedUsage failed:', e);
                 sendResponse({ siteSeconds: 0, browserSeconds: 0, error: e.message });
@@ -928,39 +938,104 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // FIX 129: Extended to use deep frame broadcast like Strict Lock
     // Broadcasts reminder overlay show/dismiss to ALL tabs AND embedded iframes
     if (request.action === 'broadcastReminderState') {
-        const { hostname, show, value, type } = request;
+        const { hostname, show, value, type, reminderStyle } = request;
         const currentTabId = sender.tab?.id;
         const cleanedHostname = cleanHost(hostname);
         const isGlobal = type === 'browser';
         
         // FIX 129/155: Track reminder state using cleaned hostname for consistency
+        // FIX 171: Also store reminderStyle for toast persistence
         if (show) {
             if (isGlobal) {
-                g_activeGlobalReminder = { value, type };
+                g_activeGlobalReminder = { value, type, reminderStyle };
             } else {
-                g_activeReminders.set(cleanedHostname, { value, type, active: true });
+                g_activeReminders.set(cleanedHostname, { value, type, active: true, reminderStyle });
             }
         } else {
+            // FIX 178: Track dismissal time to synchronize grace periods across tabs
+            const now = Date.now();
             if (isGlobal) {
                 g_activeGlobalReminder = null;
+                // We'll use a specific key for global dismissal if needed, 
+                // but usually global reminders (browser screen time) are 
+                // handled differently. Let's focus on site-specific for now.
             } else {
-                g_activeReminders.delete(cleanedHostname);
+                const existing = g_activeReminders.get(cleanedHostname);
+                if (existing) {
+                    g_activeReminders.set(cleanedHostname, { 
+                        ...existing, 
+                        active: false, 
+                        lastDismissedTime: now 
+                    });
+                } else {
+                    g_activeReminders.set(cleanedHostname, { 
+                        active: false, 
+                        lastDismissedTime: now 
+                    });
+                }
             }
         }
 
         const broadcastToAllFrames = (tabId, isCurrentTab = false) => {
+            console.log(`[Cure] Broadcasting to tab ${tabId} (isCurrentTab: ${isCurrentTab})`);
+            
+            const performFallbackBroadcast = () => {
+                console.log(`[Cure] Performing fallback broadcast to tab ${tabId}`);
+                 // 1. Media Action (Broadcast to all frames)
+                 // FIX 177: Toasts should not pause media.
+                 if (reminderStyle !== 'toast') {
+                     chrome.tabs.sendMessage(tabId, {
+                         action: 'tabMediaAction',
+                         type: show ? 'pause' : 'resume'
+                     }).catch(() => {});
+                 }
+
+                // 2. Reminder Action (Broadcast to all frames, content.js filters by hostname)
+                if (show) {
+                    if (reminderStyle === 'toast') {
+                        chrome.tabs.sendMessage(tabId, {
+                            action: 'forceReminderToast',
+                            hostname: isGlobal ? 'global' : cleanedHostname,
+                            value: value,
+                            type: type
+                        }).catch(() => {});
+                    } else {
+                        chrome.tabs.sendMessage(tabId, {
+                            action: 'forceReminderOverlay',
+                            hostname: isGlobal ? 'global' : cleanedHostname,
+                            value: value,
+                            type: type
+                        }).catch(() => {});
+                    }
+                } else {
+                    chrome.tabs.sendMessage(tabId, {
+                        action: 'dismissReminderOverlay',
+                        hostname: isGlobal ? 'global' : cleanedHostname
+                    }).catch(() => {});
+                }
+            };
+
             if (chrome.webNavigation) {
                 chrome.webNavigation.getAllFrames({ tabId: tabId }, (frames) => {
-                    if (chrome.runtime.lastError || !frames) return;
+                    if (chrome.runtime.lastError || !frames || frames.length === 0) {
+                        console.warn(`[Cure] Failed to get frames for tab ${tabId}`, chrome.runtime.lastError);
+                        performFallbackBroadcast();
+                        return;
+                    }
+                    console.log(`[Cure] Found ${frames.length} frames in tab ${tabId}`);
+                    // FIX 172: Only process if we found frames
                     frames.forEach(frame => {
                         // FIX: Media Kill Switch (Universal)
                         // We ALWAYS send a media action to EVERY frame in the tab, 
                         // bypassing hostname matching. This ensures cross-origin 
                         // iframes (like YouTube) pause their media.
-                        chrome.tabs.sendMessage(tabId, {
-                            action: 'tabMediaAction',
-                            type: show ? 'pause' : 'resume'
-                        }, { frameId: frame.frameId }).catch(() => {});
+                        // FIX 177: Toasts should not pause media.
+                        if (reminderStyle !== 'toast') {
+                            chrome.tabs.sendMessage(tabId, {
+                                action: 'tabMediaAction',
+                                type: show ? 'pause' : 'resume'
+                            }, { frameId: frame.frameId }).catch(() => {});
+                        }
 
                         // Skip the sender frame (frameId 0 on the current tab)
                         if (isCurrentTab && frame.frameId === 0) return;
@@ -972,12 +1047,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             
                             if (isGlobal || frameHost === cleanedHostname) {
                                 if (show) {
-                                    chrome.tabs.sendMessage(tabId, {
-                                        action: 'forceReminderOverlay',
-                                        hostname: isGlobal ? 'global' : cleanedHostname,
-                                        value: value,
-                                        type: type
-                                    }, { frameId: frame.frameId }).catch(() => {});
+                                    // FIX 171: Send different action based on reminderStyle
+                                    if (reminderStyle === 'toast') {
+                                        chrome.tabs.sendMessage(tabId, {
+                                            action: 'forceReminderToast',
+                                            hostname: isGlobal ? 'global' : cleanedHostname,
+                                            value: value,
+                                            type: type
+                                        }, { frameId: frame.frameId }).catch(() => {});
+                                    } else {
+                                        chrome.tabs.sendMessage(tabId, {
+                                            action: 'forceReminderOverlay',
+                                            hostname: isGlobal ? 'global' : cleanedHostname,
+                                            value: value,
+                                            type: type
+                                        }, { frameId: frame.frameId }).catch(() => {});
+                                    }
                                 } else {
                                     chrome.tabs.sendMessage(tabId, {
                                         action: 'dismissReminderOverlay',
@@ -1014,6 +1099,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     // FIX 129/155: Query for active reminder state (used by tabs/iframes on load)
+    // FIX 171: Include reminderStyle for toast persistence
     if (request.action === 'getReminderState') {
         const hostname = cleanHost(request.hostname);
         const siteState = g_activeReminders.get(hostname);
@@ -1021,9 +1107,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         // Global reminder (if active) takes precedence for reporting
         if (globalState) {
-            sendResponse({ active: true, value: globalState.value, type: globalState.type, isGlobal: true });
+            sendResponse({ active: true, value: globalState.value, type: globalState.type, isGlobal: true, reminderStyle: globalState.reminderStyle });
         } else if (siteState) {
-            sendResponse({ active: true, value: siteState.value, type: siteState.type, isGlobal: false, hostname: hostname });
+            sendResponse({ 
+                active: siteState.active || false, 
+                value: siteState.value, 
+                type: siteState.type, 
+                isGlobal: false, 
+                hostname: hostname, 
+                reminderStyle: siteState.reminderStyle,
+                lastDismissedTime: siteState.lastDismissedTime
+            });
         } else {
             sendResponse({ active: false });
         }

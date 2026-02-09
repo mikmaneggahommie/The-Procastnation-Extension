@@ -248,6 +248,11 @@ class CureVault {
         // REWARD/UP SEAMLESS TRANSITION
         this.sessionBaseSeconds = 0; // Time spent before the lock
         this.originalRewardSeconds = 0; // Total reward granted
+        
+        // FIX 185: Threshold Tracking
+        this._lastReminderThreshold = 0;
+        this._lastHeartbeatMinute = 0;
+        
         this.lastLockMode = 'up'; // Track mode changes for transitions
 
         this.breathingRoomShownOnThisPage = false;
@@ -653,16 +658,24 @@ class CureVault {
             return;
         }
 
-        // FIX 128: Cross-Tab Reminder Broadcast
-        // FIX 129: Extended to handle iframes properly
-        // When a reminder is triggered on one tab, show it on ALL tabs/iframes of the same hostname
-        if (request.action === 'forceReminderOverlay') {
+        // FIX 187: Consolidated reminder handler
+        if (request.action === 'forceReminderOverlay' || request.action === 'forceReminderToast') {
             const isGlobal = request.hostname === 'global';
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
-                // Only show if not already showing a reminder
-                if (sessionStorage.getItem('cure_reminder_active') !== '1') {
+                const rStyle = request.reminderStyle || (request.action === 'forceReminderToast' ? 'toast' : 'overlay');
+                const isActive = sessionStorage.getItem('cure_reminder_active') === '1';
+
+                // For toasts, we ALWAYS proceed so we can update the heartbeat text.
+                // For overlays, we only proceed if not already showing (prevents flickering).
+                if (rStyle === 'toast' || !isActive) {
                     sessionStorage.setItem('cure_reminder_active', '1');
                     
+                    // Sync threshold state to prevent redundant local triggers
+                    if (request.type === 'time' && request.value > 0) {
+                        this._lastReminderThreshold = request.value;
+                        this._lastHeartbeatMinute = request.value;
+                    }
+
                     this.renderReminderOverlay(request.value, request.type, true);
                 }
             }
@@ -676,12 +689,21 @@ class CureVault {
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
                 sessionStorage.removeItem('cure_reminder_active');
                 
-                
                 // FIX 129: Stop media enforcement for iframes
                 MediaController.stopEnforcement();
                 
                 this.removeOverlay();
                 document.body.style.overflow = '';
+
+                // FIX 171: Also remove any active toast
+                const root = this.shadowRoot;
+                if (root) {
+                    const toast = root.getElementById('cure-popout-notification');
+                    if (toast) {
+                        toast.style.opacity = '0';
+                        setTimeout(() => { if (toast.parentElement) toast.remove(); }, 300);
+                    }
+                }
 
                 // FIX 169: Force save timer so iframes sync to the correct current time
                 if (!this.isIframe) {
@@ -1000,15 +1022,38 @@ class CureVault {
             }
         });
 
-        // 3. FIX 129: Check for active reminder state immediately
+        // 3. FIX 129/171: Check for active reminder state immediately
         // Query background to see if a reminder is active for this hostname
         this.safeSendMessage({
             action: 'getReminderState',
             hostname: window.location.hostname
         }, (response) => {
-            if (response && response.active) {
-                sessionStorage.setItem('cure_reminder_active', '1');
-                this.renderReminderOverlay(response.value, response.type, true);
+            if (response) {
+                // FIX 186: Always sync threshold state even if inactive.
+                // This prevents new tabs from re-triggering a dismissal.
+                if (response.value > 0) {
+                    this._lastReminderThreshold = response.value;
+                    this._lastHeartbeatMinute = response.value;
+                }
+
+                if (response.active) {
+                    // FIX 171: If reminderStyle is 'toast', show toast instead of overlay
+                    if (response.reminderStyle === 'toast') {
+                        const site = this.getSiteName();
+                        let toastMsg = '';
+                        if (response.type === 'browser') {
+                            toastMsg = `⌛ Browser Screen Time: ${response.value}m spent`;
+                        } else if (response.type === 'launch') {
+                            toastMsg = `🚀 Visit Limit: ${response.value} visits`;
+                        } else {
+                            toastMsg = `⏰ ${site} Activity: ${response.value}m spent`;
+                        }
+                        this.showToast(toastMsg, 'reminder');
+                    } else {
+                        sessionStorage.setItem('cure_reminder_active', '1');
+                        this.renderReminderOverlay(response.value, response.type, true);
+                    }
+                }
             }
         });
 
@@ -1111,29 +1156,96 @@ class CureVault {
         if (isWhitelisted && !allowWhite) return;
 
         // 1. Site Activity Reminder
+        // FIX 184: REMOVED grace period check. 
+        // It prevented subsequent intervals (e.g. 2 min) from triggering if 1 min was dismissed late.
+        // We rely on 'crossed' logic (which only fires once per interval) and 'heartbeat' guards to prevent spam.
+
         if (this.settings.reminderIntervalEnabled !== false) {
             let rInt = (this.settings.reminderInterval || 15) * 60;
             if (rInt < 60) rInt = 60;
 
-            const prev = this.activeSeconds - deltaSecs;
-            const crossed = Math.floor(prev / rInt) < Math.floor(this.activeSeconds / rInt);
-            const greedy = force && this.activeSeconds >= rInt;
+            const mins = Math.floor(this.activeSeconds / 60);
+            const intervalMins = rInt / 60;
+            const currentThreshold = Math.floor(mins / intervalMins) * intervalMins;
 
-            if (this.mode === 'up' && this.activeSeconds > 0 && (crossed || greedy)) {
-                const rType = this.settings.reminderIntervalType || 'repeating';
-                const hasShown = sessionStorage.getItem('cure_remind_interval_shown');
+            // FIX 188: Use > instead of !== for threshold crossed. 
+            // This allows us to catch up if we miss a second or desync.
+            const thresholdCrossed = currentThreshold > 0 && currentThreshold > this._lastReminderThreshold;
+            const greedy = force && mins >= intervalMins;
 
-                if (rType === 'repeating' || !hasShown) {
-                    const mins = Math.floor(this.activeSeconds / 60);
-                    const rStyle = this.settings.reminderStyle || 'overlay';
-                    if (rStyle === 'overlay') {
-                        this.renderReminderOverlay(mins, 'time');
-                        MediaController.pauseAll();
-                    } else if (!force) {
-                        const site = this.getSiteName();
-                        this.showToast(`⏰ ${site} Activity: ${mins}m spent`, 'reminder');
+            if (this.mode === 'up' && this.activeSeconds > 0) {
+                const rStyle = this.settings.reminderStyle || 'overlay';
+
+                // 1. Regular threshold check (15m, 30m, etc.)
+                if (thresholdCrossed || greedy) {
+                    const rType = this.settings.reminderIntervalType || 'repeating';
+                    const hasShown = sessionStorage.getItem('cure_remind_interval_shown');
+                    
+                    if (rType === 'repeating' || !hasShown) {
+                        this._lastReminderThreshold = currentThreshold;
+                        this._lastHeartbeatMinute = currentThreshold; // Also sync heartbeat
+
+                        // FIX 189: If we are in an iframe, ONLY broadcast. 
+                        // Showing UI locally in an iframe leads to clipped/hidden notifications.
+                        // The Main Tab will handle the UI via the broadcast.
+                        if (this.isIframe) {
+                            this.safeSendMessage({
+                                action: 'broadcastReminderState',
+                                hostname: window.location.hostname,
+                                show: true,
+                                value: currentThreshold,
+                                type: 'time',
+                                reminderStyle: rStyle
+                            });
+                        } else {
+                            if (rStyle === 'overlay') {
+                                this.renderReminderOverlay(currentThreshold, 'time');
+                                MediaController.pauseAll();
+                            } else {
+                                // Show LOCALLY first for instant feedback on main tab
+                                const site = this.getSiteName();
+                                this.showToast(`⏰ ${site} Activity: ${currentThreshold}m spent`, 'reminder');
+
+                                // Broadcast to other tabs
+                                this.safeSendMessage({
+                                    action: 'broadcastReminderState',
+                                    hostname: window.location.hostname,
+                                    show: true,
+                                    value: currentThreshold,
+                                    type: 'time',
+                                    reminderStyle: 'toast'
+                                });
+                            }
+                        }
+                        if (rType === 'once') sessionStorage.setItem('cure_remind_interval_shown', '1');
                     }
-                    if (rType === 'once') sessionStorage.setItem('cure_remind_interval_shown', '1');
+                }
+
+                // FIX 175/185/189: Independent Heartbeat for Toast Updates
+                if (rStyle === 'toast' && Math.floor(this.activeSeconds) % 60 === 0 && this.activeSeconds >= 60) {
+                     const hMins = Math.floor(this.activeSeconds / 60);
+                     if (this._lastHeartbeatMinute !== hMins) {
+                         // Heartbeats ONLY update visible toasts.
+                         const hasToast = !!this.ensureShadow().getElementById('cure-popout-notification');
+                         
+                         if (hasToast && !this.isIframe) { // Only update locally if not in iframe
+                             this._lastHeartbeatMinute = hMins;
+                             const site = this.getSiteName();
+                             this.showToast(`⏰ ${site} Activity: ${hMins}m spent`, 'reminder');
+
+                             // Broadcast update to other tabs
+                             if (thresholdCrossed === false) {
+                                this.safeSendMessage({
+                                    action: 'broadcastReminderState',
+                                    hostname: window.location.hostname,
+                                    show: true,
+                                    value: hMins,
+                                    type: 'time',
+                                    reminderStyle: 'toast'
+                                });
+                             }
+                         }
+                     }
                 }
             }
         }
@@ -1296,16 +1408,43 @@ class CureVault {
                 if (!lockResponse || !response) return resolve();
 
                 // 2. Handle Cross-Tab Reminder Sync
-                if (reminderRes && reminderRes.active) {
-                    sessionStorage.setItem('cure_reminder_active', '1');
-                    // FIX: Always use GROUND TRUTH for launch counts if a reminder is active.
-                    // This prevents the "stuck at 4" bug by showing 5 if the user reloads without unlocking.
-                    const displayValue = (reminderRes.type === 'launch') ? (response?.currentLaunches || reminderRes.value) : reminderRes.value;
-                    
-                    // If we have a newer count than the background, broadcast it to sync other tabs
-                    const needsUpdate = (reminderRes.type === 'launch' && response?.currentLaunches > reminderRes.value);
-                    this.renderReminderOverlay(displayValue, reminderRes.type, !needsUpdate); 
-                    return resolve(); 
+                if (reminderRes) {
+                    // FIX 186: Always sync threshold state even if inactive.
+                    // This prevents new tabs from re-triggering a dismissal.
+                    if (reminderRes.value > 0) {
+                         this._lastReminderThreshold = reminderRes.value;
+                         this._lastHeartbeatMinute = reminderRes.value;
+                    }
+
+                    if (reminderRes.active) {
+                        sessionStorage.setItem('cure_reminder_active', '1');
+                        // FIX: Always use GROUND TRUTH for launch counts if a reminder is active.
+                        // This prevents the "stuck at 4" bug by showing 5 if the user reloads without unlocking.
+                        const displayValue = (reminderRes.type === 'launch') ? (response?.currentLaunches || reminderRes.value) : reminderRes.value;
+                        
+                        // If we have a newer count than the background, broadcast it to sync other tabs
+                        const needsUpdate = (reminderRes.type === 'launch' && response?.currentLaunches > reminderRes.value);
+                        
+                        if (reminderRes.reminderStyle === 'toast') {
+                            const site = this.getSiteName();
+                            let toastMsg = '';
+                            if (reminderRes.type === 'browser') {
+                                toastMsg = `⌛ Browser Screen Time: ${displayValue}m spent`;
+                            } else if (reminderRes.type === 'launch') {
+                                toastMsg = `🚀 Visit Limit: ${displayValue} visits`;
+                            } else {
+                                toastMsg = `⏰ ${site} Activity: ${displayValue}m spent`;
+                            }
+                            this.showToast(toastMsg, 'reminder');
+                            
+                            // FIX 183: Ensure state monitor starts for toasts!
+                            // Otherwise the timer stops counting on refreshed tabs.
+                            if (!this.isIframe && !this.timerInterval) this.stateMonitor();
+                        } else {
+                            this.renderReminderOverlay(displayValue, reminderRes.type, true);
+                        }
+                        return resolve();
+                    }
                 }
 
                 // 3. Handle Whitelisting & Iframe logic
@@ -1945,6 +2084,21 @@ class CureVault {
                 if (res) {
                     this.windowedSiteSeconds = res.siteSeconds;
                     this.windowedBrowserSeconds = res.browserSeconds;
+
+                    // FIX 188: Sync threshold state from ground truth in background
+                    if (res.reminderValue !== undefined && res.reminderValue >= this._lastReminderThreshold) {
+                        this._lastReminderThreshold = res.reminderValue;
+                        this._lastHeartbeatMinute = res.reminderValue;
+                        
+                        // If background says it's active but we are not showing it, show it.
+                        // If background says it's inactive but we HAVE it, remove it.
+                        const isActiveLocally = sessionStorage.getItem('cure_reminder_active') === '1';
+                        if (res.reminderActive && !isActiveLocally) {
+                            this.renderReminderOverlay(res.reminderValue, 'time', true);
+                        } else if (!res.reminderActive && isActiveLocally) {
+                            this.removeOverlay();
+                        }
+                    }
                 }
                 
                 // ALSO Fetch/Verify Launch Status for complete evaluation
@@ -2301,8 +2455,19 @@ class CureVault {
         // FIX 115: Removed isIframe check. 
         const root = this.ensureShadow();
 
-        // Remove existing popout if any
+        // FIX 174: Reuse existing popout to prevent flickering/re-animation
         const existing = root.getElementById('cure-popout-notification');
+        if (existing && existing.dataset.type === type) {
+            const msgSpan = existing.querySelector('span');
+            if (msgSpan) {
+                msgSpan.textContent = msg;
+                // FIX 189: Force visibility and pulse effect to indicate update
+                existing.style.opacity = '1';
+                existing.style.transform = 'translateX(-50%) scale(1.05)';
+                setTimeout(() => { existing.style.transform = 'translateX(-50%) scale(1)'; }, 150);
+                return;
+            }
+        }
         if (existing) existing.remove();
 
         const popout = document.createElement('div');
@@ -2376,9 +2541,25 @@ class CureVault {
         closeBtn.style.cssText = "background:rgba(255,255,255,0.2); border:none; width:20px; height:20px; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;";
         
         // Handle Close Button Click
+        // FIX 171: Broadcast dismissal so all tabs/iframes remove the toast
         closeBtn.onclick = () => {
             popout.style.opacity = '0';
             setTimeout(() => { if (popout.parentElement) popout.remove(); }, 300);
+            
+            // If this is a reminder toast, broadcast dismissal to all tabs
+            if (type === 'reminder') {
+                sessionStorage.removeItem('cure_reminder_active');
+                // Set heartbeat to current minute to prevent instant re-trigger
+                this._lastHeartbeatMinute = Math.floor(this.activeSeconds / 60);
+
+                this.safeSendMessage({
+                    action: 'broadcastReminderState',
+                    hostname: window.location.hostname,
+                    show: false,
+                    type: 'time',
+                    reminderStyle: 'toast'
+                });
+            }
         };
         popout.appendChild(closeBtn);
 
@@ -2477,9 +2658,15 @@ class CureVault {
 
     // --- HELPER: REMOVE OVERLAY --
     removeOverlay() {
+        sessionStorage.removeItem('cure_reminder_active');
+        
         if (this.shadowRoot) {
             const o = this.shadowRoot.getElementById(this.overlayId);
             if (o) o.remove();
+
+            // FIX 186: Also remove the toast notification if it exists!
+            const toast = this.shadowRoot.getElementById('cure-popout-notification');
+            if (toast) toast.remove();
 
             // IMMEDIATELY restore pill if we are no longer blocking
             const settings = this.settings || {};
@@ -2928,7 +3115,9 @@ class CureVault {
             subtitle = `You've spent ${value} minutes on ${site}.`;
         }
 
-        if (this.timerInterval) {
+        const rStyle = this.settings.reminderStyle || 'overlay';
+        
+        if (rStyle === 'overlay' && this.timerInterval) {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
@@ -2951,9 +3140,23 @@ class CureVault {
             });
         }
 
-        // FIX 170: Respect reminderStyle in ALL contexts (main tab AND iframes)
-        const rStyle = this.settings.reminderStyle || 'overlay';
+        // FIX 170/171: Respect reminderStyle in ALL contexts (main tab AND iframes)
+        // FIX 171: Toast now persists across tabs via g_activeReminders
         if (rStyle === 'toast') {
+            // FIX 189: If we are in an iframe and THIS is the local trigger (not forced from broadcast),
+            // we ONLY broadcast to let the main tab handle the UI.
+            if (this.isIframe && !forced) {
+                this.safeSendMessage({
+                    action: 'broadcastReminderState',
+                    hostname: window.location.hostname,
+                    show: true,
+                    value: value,
+                    type: type,
+                    reminderStyle: 'toast'
+                });
+                return; 
+            }
+
             // Build toast message based on type
             let toastMsg = '';
             if (type === 'browser') {
@@ -2961,10 +3164,21 @@ class CureVault {
             } else if (type === 'launch') {
                 toastMsg = `🚀 Visit Limit: ${value} visits`;
             } else {
-                toastMsg = `⏰ ${site} Activity: ${value}m spent`;
+                toastMsg = `⏰ ${this.getSiteName()} Activity: ${value}m spent`;
             }
             this.showToast(toastMsg, 'reminder');
-            sessionStorage.removeItem('cure_reminder_active'); // Toast doesn't block, so clear flag
+            
+            // Broadcast to background so other tabs/iframes can restore this toast
+            if (!forced) {
+                this.safeSendMessage({
+                    action: 'broadcastReminderState',
+                    hostname: window.location.hostname,
+                    show: true,
+                    value: value,
+                    type: type,
+                    reminderStyle: 'toast'
+                });
+            }
             return;
         }
 
@@ -3038,7 +3252,7 @@ class CureVault {
             btn.onclick = async () => {
                 sessionStorage.removeItem('cure_reminder_active');
                 sessionStorage.removeItem('cure_launch_counted'); // FIX: Allow re-counting for iterative launch
-                this.recentlyDismissedLaunch = Date.now(); // Guard against rapid re-trigger
+                
 
                 // FIX 128/156: Broadcast dismissal to ALL tabs (hostname-specific or global)
                 this.safeSendMessage({
