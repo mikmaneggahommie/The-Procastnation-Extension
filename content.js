@@ -375,9 +375,18 @@ class CureVault {
         }
     }
 
+    // FIX: Standardize Hostname (Remove www.)
+    cleanHost(hostname) {
+        if (!hostname) return '';
+        return hostname.toLowerCase().trim().replace(/^www\./, '');
+    }
+
     handleStorageChange(changes, area) {
         if (area === 'local') {
-            const key = `cure_timer_${window.location.hostname}`;
+            // FIX 194: Standardize Key (www. vs non-www.)
+            const host = this.cleanHost(window.location.hostname);
+            const key = `cure_timer_${host}`;
+
             if (changes[key]) {
                 const { seconds, mode, timestamp } = changes[key].newValue || {};
                 const timeoutMs = ((this.settings || {}).sessionTimeoutMins || 30) * 60 * 1000;
@@ -1999,7 +2008,9 @@ class CureVault {
     // --- PERSISTENCE ---
     async loadTimer() {
         if (!this.isContextValid()) return;
-        const key = `cure_timer_${window.location.hostname}`;
+        // FIX 194: Standardize Key
+        const host = this.cleanHost(window.location.hostname);
+        const key = `cure_timer_${host}`;
 
         return new Promise(resolve => {
             chrome.storage.local.get([key], (result) => {
@@ -2031,12 +2042,20 @@ class CureVault {
 
     saveTimer() {
         if (!this.isContextValid()) return;
+
+        // FIX 195: Visibility Guard.
+        // Hidden tabs MUST NOT write to storage. They have stale time.
+        // They only READ from storage via handleStorageChange.
+        if (document.hidden) return;
         
         // FIX 192: Unblock iframes, but only if they are the active tracker (e.g. video playing)
         if (this.isIframe && !this.checkIfPlaying()) return;
         
         if (this._resetGuard) return; // FIX 126: Prevent zombie state saving during reset
-        const key = `cure_timer_${window.location.hostname}`;
+        
+        // FIX 194: Standardize Key
+        const host = this.cleanHost(window.location.hostname);
+        const key = `cure_timer_${host}`;
         const now = Date.now();
 
         const data = {
