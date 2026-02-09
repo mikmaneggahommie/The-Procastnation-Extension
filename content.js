@@ -2029,6 +2029,11 @@ class CureVault {
     // --- PERSISTENCE ---
     async loadTimer() {
         if (!this.isContextValid()) return;
+        
+        // FIX: Sync Guard (Time Travel Prevention)
+        // Flag that we are fetching so saveTimer() knows to yield.
+        this._isFetching = true;
+
         // FIX 194: Standardize Key
         const host = this.cleanHost(window.location.hostname);
         const key = `cure_timer_${host}`;
@@ -2056,18 +2061,37 @@ class CureVault {
                         console.error('[Cure] Load timer error:', e);
                     }
                 }
+                this._isFetching = false; // Release lock
                 resolve();
             });
         });
     }
 
     saveTimer() {
-        if (!this.isContextValid()) return;
+        if (!this.isContextValid()) {
+            // FIX: Visual Indication of Orphaned State
+            // If the extension context is invalidated (updated/reloaded), verify visuals.
+            const pill = this.shadowRoot?.getElementById(this.pillId);
+            if (pill && !pill.innerText.includes('⚠')) {
+                pill.style.border = '2px solid red';
+                pill.innerText += ' ⚠';
+                pill.title = 'Extension updated. Please reload the page.';
+            }
+            return;
+        }
 
         // FIX 195: Visibility Guard.
         // Hidden tabs MUST NOT write to storage. They have stale time.
         // They only READ from storage via handleStorageChange.
         if (document.hidden) return;
+
+        // FIX: Sync Guard (Time Travel Prevention)
+        // If we are currently fetching the latest time from storage, 
+        // DO NOT overwrite it with our potentially stale local state.
+        if (this._isFetching) {
+            // console.debug('[Cure] Save suppressed: Fetch in progress');
+            return;
+        }
         
         // FIX 192: Unblock iframes, but only if they are the active tracker (e.g. video playing)
         if (this.isIframe && !this.checkIfPlaying()) return;
