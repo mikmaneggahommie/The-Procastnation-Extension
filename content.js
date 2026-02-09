@@ -2518,7 +2518,7 @@ class CureVault {
         overlay.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%;">
                 ${contentHtml}
-                <button id="cure-iframe-unlock-btn" data-reason="${reason}" style="
+                <button id="cure-iframe-unlock-btn" data-reason="${reason}" data-type="${metadata.reminderType || ''}" data-value="${metadata.value || ''}" style="
                     margin-top: 12px; font-size: min(13px, 3.5vw); color: #86868B;
                     font-weight: 600; background: transparent; padding: 10px 20px; border-radius: 12px;
                     box-shadow: none; border: 2px solid #E5E5EA; cursor: pointer;
@@ -2568,11 +2568,27 @@ class CureVault {
                 // FIX 129: For reminders, allow direct dismissal from iframe
                 // This broadcasts the dismissal to all tabs (including this iframe)
                 if (btnReason === 'reminder') {
+                    const rType = btn.dataset.type || 'time';
+                    const rValue = btn.dataset.value || '';
+                    
                     this.safeSendMessage({
                         action: 'broadcastReminderState',
                         hostname: window.location.hostname,
-                        show: false
+                        show: false,
+                        type: rType,
+                        value: rValue
                     });
+                    
+                    // FIX 167: Also set the dismissal flag for site-specific launch reminders
+                    if (rType === 'launch' && rValue) {
+                        this.safeSendMessage({ 
+                            action: 'sessionStorageProxy', 
+                            op: 'set', 
+                            key: `cure_global_remind_dismissed_launch_${window.location.hostname}_${rValue}`, 
+                            value: true 
+                        });
+                    }
+                    
                     // Optimistically unblock immediately (handler will also catch it)
                     MediaController.stopEnforcement();
                     this.removeOverlay();
@@ -2856,7 +2872,7 @@ class CureVault {
             // FIX 141/166: Rich Iframe UI
             // Pass full metadata so iframe can render a matching UI (e.g. Frequent Visit Alert)
             this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
-                emoji, title, timeLabel, timeUnit, subtitle, continueText, value 
+                emoji, title, timeLabel, timeUnit, subtitle, continueText, value, reminderType: type 
             });
             return;
         }
