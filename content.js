@@ -650,17 +650,7 @@ class CureVault {
                 if (sessionStorage.getItem('cure_reminder_active') !== '1') {
                     sessionStorage.setItem('cure_reminder_active', '1');
                     
-                    if (this.isIframe) {
-                        // FIX 141: Pass metadata for rich UI even on broadcasted reminders
-                        this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
-                            value: request.value,
-                            timeLabel: `${request.value}`,
-                            timeUnit: request.type === 'browser' ? 'minutes total' : 'minutes spent',
-                            title: request.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
-                        });
-                    } else {
-                        this.renderReminderOverlay(request.value, request.type, true);
-                    }
+                    this.renderReminderOverlay(request.value, request.type, true);
                 }
             }
             return;
@@ -999,17 +989,7 @@ class CureVault {
         }, (response) => {
             if (response && response.active) {
                 sessionStorage.setItem('cure_reminder_active', '1');
-                if (this.isIframe) {
-                    // FIX 141: Rich Iframe UI on init
-                    this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
-                        value: response.value,
-                        timeLabel: `${response.value}`,
-                        timeUnit: response.type === 'browser' ? 'minutes total' : 'minutes spent',
-                        title: response.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
-                    });
-                } else {
-                    this.renderReminderOverlay(response.value, response.type, true);
-                }
+                this.renderReminderOverlay(response.value, response.type, true);
             }
         });
 
@@ -1292,16 +1272,7 @@ class CureVault {
                 // 1. Handle Cross-Tab Reminder Sync
                 if (reminderRes && reminderRes.active) {
                     sessionStorage.setItem('cure_reminder_active', '1');
-                    if (this.isIframe) {
-                        this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
-                            value: reminderRes.value,
-                            timeLabel: `${reminderRes.value}`,
-                            timeUnit: reminderRes.type === 'browser' ? 'minutes total' : 'minutes spent',
-                            title: reminderRes.type === 'browser' ? 'Daily Screen Time' : 'Productivity Check'
-                        });
-                    } else {
-                        this.renderReminderOverlay(reminderRes.value, reminderRes.type, true);
-                    }
+                    this.renderReminderOverlay(reminderRes.value, reminderRes.type, true);
                 }
 
                 // 2. Handle Whitelisting & Iframe logic
@@ -2878,8 +2849,12 @@ class CureVault {
         }
 
         if (this.isIframe) {
-            // FIX 141: Rich Iframe UI
-            // Pass full metadata so iframe can render a matching UI
+            // FIX 166: Exclude browser-wide screen time reminders from iframes
+            // These alerts are top-level only and don't need to clutter small frames.
+            if (type === 'browser') return;
+
+            // FIX 141/166: Rich Iframe UI
+            // Pass full metadata so iframe can render a matching UI (e.g. Frequent Visit Alert)
             this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
                 emoji, title, timeLabel, timeUnit, subtitle, continueText, value 
             });
