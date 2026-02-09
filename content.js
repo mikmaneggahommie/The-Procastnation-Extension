@@ -335,13 +335,24 @@ class CureVault {
 
     handleFocus() {
         if (typeof this.evaluateAllTriggers !== 'function') return;
-        this.evaluateAllTriggers().then(() => this.forceRefreshUI());
+        // FIX: Instant Sync (Pull-on-Visible)
+        // Immediately fetch latest timer from storage to sync with other tabs
+        if (typeof this.loadTimer === 'function') {
+            this.loadTimer().then(() => {
+                this.updatePill?.(); // Instant visual update
+                this.evaluateAllTriggers().then(() => this.forceRefreshUI());
+            });
+        } else {
+            this.evaluateAllTriggers().then(() => this.forceRefreshUI());
+        }
     }
 
     handleVisibilityChange() {
         if (typeof this.loadTimer !== 'function') return;
         if (!document.hidden) {
+            // FIX: Instant Sync (Pull-on-Visible)
             this.loadTimer().then(() => {
+                this.updatePill?.(); // Instant visual update
                 if (typeof this.evaluateAllTriggers !== 'function') return;
                 this.evaluateAllTriggers().then(() => {
                     this.forceRefreshUI();
@@ -369,9 +380,19 @@ class CureVault {
                 this.stateMonitor();
             }
 
-            this.evaluateAllTriggers().then(() => {
-                this.forceRefreshUI();
-            });
+            // FIX: Instant Sync (Pull-on-Visible)
+            if (typeof this.loadTimer === 'function') {
+                this.loadTimer().then(() => {
+                    this.updatePill?.();
+                    this.evaluateAllTriggers().then(() => {
+                        this.forceRefreshUI();
+                    });
+                });
+            } else {
+                this.evaluateAllTriggers().then(() => {
+                    this.forceRefreshUI();
+                });
+            }
         }
     }
 
