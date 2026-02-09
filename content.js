@@ -733,6 +733,22 @@ class CureVault {
             // Detection of "Disabling Lock" or "Whitelisting" vs "Enabling"
             const oldStrictLock = this.settings?.masterHardLock !== false;
             const newStrictLock = newSettings.masterHardLock !== false;
+            
+            // FIX 190: Anchor thresholds and clear "once" flag on interval change
+            // This ensures that switching from "Every" to "Once" doesn't get 
+            // silenced by the already-spent minutes.
+            const oldType = this.settings?.reminderIntervalType;
+            const oldInt = this.settings?.reminderInterval;
+            const newType = newSettings.reminderIntervalType;
+            const newInt = newSettings.reminderInterval;
+            const oldEnabled = this.settings?.reminderIntervalEnabled !== false;
+            const newEnabled = newSettings.reminderIntervalEnabled !== false;
+
+            if (oldType !== newType || oldInt !== newInt || oldEnabled !== newEnabled) {
+                sessionStorage.removeItem('cure_remind_interval_shown');
+                this._lastReminderThreshold = Math.floor(this.activeSeconds / 60);
+            }
+
             const oldWhitelisted = this.isWhitelisted();
             
             // Apply settings first so isWhitelisted() reflects the new state
@@ -741,8 +757,7 @@ class CureVault {
             const newWhitelisted = this.isWhitelisted();
 
             // FIX: Reactive Reminder Re-evaluation
-            // If the user just changed settings (e.g. lowered a threshold), check if we trigger immediately.
-            this.checkReminders(0, true);
+            this.checkReminders(0, false); // Changed to false: wait for next boundary
 
             // SUPPRESS OVERLAY: If we just whitelisted or turned OFF strict lock, 
             // the user almost certainly doesn't want to see a Breathing Room immediately.
@@ -1168,16 +1183,15 @@ class CureVault {
             const intervalMins = rInt / 60;
             const currentThreshold = Math.floor(mins / intervalMins) * intervalMins;
 
-            // FIX 188: Use > instead of !== for threshold crossed. 
+            // FIX 188/190: Use > instead of !== for threshold crossed. 
             // This allows us to catch up if we miss a second or desync.
             const thresholdCrossed = currentThreshold > 0 && currentThreshold > this._lastReminderThreshold;
-            const greedy = force && mins >= intervalMins;
 
             if (this.mode === 'up' && this.activeSeconds > 0) {
                 const rStyle = this.settings.reminderStyle || 'overlay';
 
                 // 1. Regular threshold check (15m, 30m, etc.)
-                if (thresholdCrossed || greedy) {
+                if (thresholdCrossed) {
                     const rType = this.settings.reminderIntervalType || 'repeating';
                     const hasShown = sessionStorage.getItem('cure_remind_interval_shown');
                     
