@@ -2,8 +2,14 @@
 
 This file is the project's "Save Game" log. Whenever a feature is perfected, it is recorded here so it can be restored if things break in the future.
 
-- **Commit:** `HEAD`
+- **Commit:** `4e6ce35`
   **Status:** FIXED: Global Toast Sync & Re-trigger (Fixes 184-189). Implemented background-authoritative threshold sync to ensure perfect cross-tab dismissal and reliable intervals.
+
+> [!CAUTION]
+> **ANTI-REGRESSION PROTOCOL**
+> Before modifying any feature, you **MUST** check this file.
+> If a feature is listed here as "FIXED" or "PERFECTED", do **NOT** change its core logic without a specific, user-approved plan.
+> if you break a feature, **IMMEDIATELY** revert to the **Stable Commit** listed below. Do not try to "fix forward" if it risks stability.
 
 ---
 
@@ -11,10 +17,10 @@ This file is the project's "Save Game" log. Whenever a feature is perfected, it 
 
 | Date                         | Feature                                     | Stable Commit                  | Description                                                                                                                                                                                 |
 | :--------------------------- | :------------------------------------------ | :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Feb 9, 2026                  | **Fix: Global Toast Sync & Enforcement**    | `HEAD`                         | Definitive fix for cross-tab sync, re-triggering (Fixes 184-192), and local iframe enforcement (Fix 193). Restored instant local blocking and media pausing in iframes to prevent sync lag. |
-| Feb 9, 2026                  | **Fix: Iframe Timer Sync on Unlock**        | `HEAD`                         | Fixed timer pill stuck in iframes after reminder unlock; added `saveTimer` + `stateMonitor` restart for proper sync (FIX 168/169).                                                          |
-| Feb 9, 2026                  | **Feat: Toast Reminders in Iframes**        | `HEAD`                         | Respects `reminderStyle` (toast/overlay) in all contexts including iframes; unified reminder display (FIX 170).                                                                             |
-| Feb 9, 2026                  | **Fix: Atomic Visit Logic & UI Unity**      | `HEAD`                         | Standardized "Remind every" UI across all triggers; implemented concurrency guards for atomic visit counting (+1 increment); fixed "stuck" visit count sync in active reminders.            |
+| Feb 9, 2026                  | **Fix: Global Toast Sync & Enforcement**    | `4e6ce35`                      | Definitive fix for cross-tab sync, re-triggering (Fixes 184-192), and local iframe enforcement (Fix 193). Restored instant local blocking and media pausing in iframes to prevent sync lag. |
+| Feb 9, 2026                  | **Fix: Iframe Timer Sync on Unlock**        | `4e6ce35`                      | Fixed timer pill stuck in iframes after reminder unlock; added `saveTimer` + `stateMonitor` restart for proper sync (FIX 168/169).                                                          |
+| Feb 9, 2026                  | **Feat: Toast Reminders in Iframes**        | `4e6ce35`                      | Respects `reminderStyle` (toast/overlay) in all contexts including iframes; unified reminder display (FIX 170).                                                                             |
+| Feb 9, 2026                  | **Fix: Atomic Visit Logic & UI Unity**      | `4e6ce35`                      | Standardized "Remind every" UI across all triggers; implemented concurrency guards for atomic visit counting (+1 increment); fixed "stuck" visit count sync in active reminders.            |
 | Feb 8, 2026                  | **Fix: Confirmation Dialog Deadlock**       | `HEAD`                         | Prevents "stuck" UI by disabling Save button in confirmation dialog if settings are invalid.                                                                                                |
 | Feb 8, 2026                  | **Global Validation Enforcement**           | `HEAD`                         | Reinforced all save actions (Home screen & Sub-views) with strict master toggle validation.                                                                                                 |
 | Feb 8, 2026                  | **UX: Master Toggle Validation**            | `HEAD`                         | Disables Save buttons if master toggles are ON but no sub-triggers are selected. Ensures consistent logic.                                                                                  |
