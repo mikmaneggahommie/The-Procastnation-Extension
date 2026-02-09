@@ -381,10 +381,28 @@ class CureVault {
             if (changes[key]) {
                 const { seconds, mode, timestamp } = changes[key].newValue || {};
                 const timeoutMs = ((this.settings || {}).sessionTimeoutMins || 30) * 60 * 1000;
+                
                 if (timestamp && (Date.now() - timestamp < timeoutMs)) {
-                    this.activeSeconds = seconds;
-                    this.mode = mode || 'up';
-                    this.updatePill?.();
+                    // FIX 191: Monotonic Sync. 
+                    // Prevent "Time Warp" rollbacks from background tabs with stale usage.
+                    const isNewMode = mode !== this.mode;
+                    let shouldUpdate = isNewMode;
+                    
+                    if (!isNewMode) {
+                        if (this.mode === 'up') {
+                            // Up mode: Only accept GREATER seconds
+                            shouldUpdate = seconds > this.activeSeconds;
+                        } else {
+                            // Down mode (Reward): Only accept SMALLER seconds (further along)
+                            shouldUpdate = seconds < this.activeSeconds;
+                        }
+                    }
+
+                    if (shouldUpdate) {
+                        this.activeSeconds = seconds;
+                        this.mode = mode || 'up';
+                        this.updatePill?.();
+                    }
                 }
             }
         }
@@ -705,8 +723,10 @@ class CureVault {
                     }
                 }
 
-                // FIX 169: Force save timer so iframes sync to the correct current time
-                if (!this.isIframe) {
+                // FIX 169/191: Force save timer so iframes sync to the correct current time.
+                // CRITICAL (Fix 191): Only the tab the user actually Interacted with (the initiator) 
+                // should save its timer. Passive tabs will follow via handleStorageChange logic.
+                if (!this.isIframe && (!request.initiatorInstanceId || request.initiatorInstanceId === this.instanceId)) {
                     this.saveTimer();
                 }
                 
@@ -2571,7 +2591,8 @@ class CureVault {
                     hostname: window.location.hostname,
                     show: false,
                     type: 'time',
-                    reminderStyle: 'toast'
+                    reminderStyle: 'toast',
+                    initiatorInstanceId: this.instanceId
                 });
             }
         };
@@ -3273,7 +3294,8 @@ class CureVault {
                     action: 'broadcastReminderState',
                     hostname: window.location.hostname,
                     show: false,
-                    type: type
+                    type: type,
+                    initiatorInstanceId: this.instanceId
                 });
                 
                 // If this is a global reminder (browser/launch), notify background to dismiss it for ALL tabs
