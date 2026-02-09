@@ -1385,7 +1385,7 @@ class CureVault {
 
                 if (masterRemindersOn && rTriggers.launchLimit?.enabled && currentLaunches >= rTriggers.launchLimit.value) {
                     // Check if already dismissed
-                    const dismissKey = `cure_global_remind_dismissed_launch`;
+                    const dismissKey = `cure_global_remind_dismissed_launch_${window.location.hostname}_${currentLaunches}`;
                     if (!response?.globalDismissals?.[dismissKey]) {
                         this.renderReminderOverlay(currentLaunches, 'launch');
                         return finalResolve();
@@ -2953,11 +2953,12 @@ class CureVault {
                 
                 // If this is a global reminder (browser/launch), notify background to dismiss it for ALL tabs
                 if (type === 'browser' || type === 'launch') {
-                    const bucket = type === 'browser' ? value : value; // or current bucket logic
+                    const bucket = type === 'browser' ? value : value; 
+                    const hostPart = type === 'launch' ? `_${window.location.hostname}_` : '_';
                     this.safeSendMessage({ 
                         action: 'sessionStorageProxy', 
                         op: 'set', 
-                        key: `cure_global_remind_dismissed_${type}_${value}`, 
+                        key: `cure_global_remind_dismissed_${type}${hostPart}${value}`, 
                         value: true 
                     });
                 }

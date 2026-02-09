@@ -912,7 +912,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const currentTabId = sender.tab?.id;
         const cleanHost = hostname.replace(/^www\./, '');
 
-        const isGlobal = type === 'browser' || type === 'launch';
+        const isGlobal = type === 'browser';
 
         // FIX 129/155: Track reminder state
         if (show) {
