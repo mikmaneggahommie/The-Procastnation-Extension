@@ -1011,6 +1011,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    // FIX 168: Clear launch history when user unlocks a launch reminder
+    // This creates a "clean slate" so the next reminder triggers after another full cycle
+    if (request.action === 'clearLaunchHistory') {
+        const hostname = request.hostname?.replace(/^www\./, '');
+        if (hostname) {
+            (async () => {
+                const stats = await getDailyStats();
+                if (stats.sites[hostname]) {
+                    stats.sites[hostname].launches = [];
+                    saveStats();
+                }
+                sendResponse({ success: true });
+            })();
+        } else {
+            sendResponse({ success: false });
+        }
+        return true;
+    }
 
     if (request.action === 'closeMyTab') {
         if (sender.tab?.id) {

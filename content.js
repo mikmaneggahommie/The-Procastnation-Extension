@@ -2587,6 +2587,12 @@ class CureVault {
                             key: `cure_global_remind_dismissed_launch_${window.location.hostname}_${rValue}`, 
                             value: true 
                         });
+                        
+                        // FIX 168: Clear launch history for a "clean slate" after unlocking
+                        this.safeSendMessage({ 
+                            action: 'clearLaunchHistory', 
+                            hostname: window.location.hostname 
+                        });
                     }
                     
                     // Optimistically unblock immediately (handler will also catch it)
@@ -2952,6 +2958,14 @@ class CureVault {
                         key: `cure_global_remind_dismissed_${type}${hostPart}${value}`, 
                         value: true 
                     });
+                    
+                    // FIX 168: Clear launch history for a "clean slate" after unlocking
+                    if (type === 'launch') {
+                        this.safeSendMessage({ 
+                            action: 'clearLaunchHistory', 
+                            hostname: window.location.hostname 
+                        });
+                    }
                 }
 
                 this.removeOverlay();
