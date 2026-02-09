@@ -676,14 +676,20 @@ class CureVault {
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
                 sessionStorage.removeItem('cure_reminder_active');
                 
+                
                 // FIX 129: Stop media enforcement for iframes
                 MediaController.stopEnforcement();
                 
                 this.removeOverlay();
                 document.body.style.overflow = '';
+
+                // FIX 169: Force save timer so iframes sync to the correct current time
                 if (!this.isIframe) {
-                    this.stateMonitor();
+                    this.saveTimer();
                 }
+                
+                // FIX 168: Restart monitor in iframes too so the pill updates!
+                this.stateMonitor();
             }
             return;
         }
@@ -2943,6 +2949,23 @@ class CureVault {
                 value: value,
                 type: type
             });
+        }
+
+        // FIX 170: Respect reminderStyle in ALL contexts (main tab AND iframes)
+        const rStyle = this.settings.reminderStyle || 'overlay';
+        if (rStyle === 'toast') {
+            // Build toast message based on type
+            let toastMsg = '';
+            if (type === 'browser') {
+                toastMsg = `⌛ Browser Screen Time: ${value}m spent`;
+            } else if (type === 'launch') {
+                toastMsg = `🚀 Visit Limit: ${value} visits`;
+            } else {
+                toastMsg = `⏰ ${site} Activity: ${value}m spent`;
+            }
+            this.showToast(toastMsg, 'reminder');
+            sessionStorage.removeItem('cure_reminder_active'); // Toast doesn't block, so clear flag
+            return;
         }
 
         if (this.isIframe) {
