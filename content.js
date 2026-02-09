@@ -1219,37 +1219,27 @@ class CureVault {
                         this._lastReminderThreshold = currentThreshold;
                         this._lastHeartbeatMinute = currentThreshold; // Also sync heartbeat
 
-                        // FIX 189: If we are in an iframe, ONLY broadcast. 
-                        // Showing UI locally in an iframe leads to clipped/hidden notifications.
-                        // The Main Tab will handle the UI via the broadcast.
-                        if (this.isIframe) {
+                        // FIX 193: Consolidate Local Trigger and Global Broadcast.
+                        // We NO LONGER restrict iframes to 'only broadcast'.
+                        // Both iframes and main tabs should render locally for instant feedback,
+                        // and both should broadcast to keep other tabs/frames in sync.
+                        if (rStyle === 'overlay') {
+                            this.renderReminderOverlay(currentThreshold, 'time');
+                            MediaController.pauseAll();
+                        } else {
+                            // Show LOCALLY first for instant feedback
+                            const site = this.getSiteName();
+                            this.showToast(`⏰ ${site} Activity: ${currentThreshold}m spent`, 'reminder');
+
+                            // Broadcast to other tabs
                             this.safeSendMessage({
                                 action: 'broadcastReminderState',
                                 hostname: window.location.hostname,
                                 show: true,
                                 value: currentThreshold,
                                 type: 'time',
-                                reminderStyle: rStyle
+                                reminderStyle: 'toast'
                             });
-                        } else {
-                            if (rStyle === 'overlay') {
-                                this.renderReminderOverlay(currentThreshold, 'time');
-                                MediaController.pauseAll();
-                            } else {
-                                // Show LOCALLY first for instant feedback on main tab
-                                const site = this.getSiteName();
-                                this.showToast(`⏰ ${site} Activity: ${currentThreshold}m spent`, 'reminder');
-
-                                // Broadcast to other tabs
-                                this.safeSendMessage({
-                                    action: 'broadcastReminderState',
-                                    hostname: window.location.hostname,
-                                    show: true,
-                                    value: currentThreshold,
-                                    type: 'time',
-                                    reminderStyle: 'toast'
-                                });
-                            }
                         }
                         if (rType === 'once') sessionStorage.setItem('cure_remind_interval_shown', '1');
                     }
@@ -3191,19 +3181,6 @@ class CureVault {
         // FIX 170/171: Respect reminderStyle in ALL contexts (main tab AND iframes)
         // FIX 171: Toast now persists across tabs via g_activeReminders
         if (rStyle === 'toast') {
-            // FIX 189: If we are in an iframe and THIS is the local trigger (not forced from broadcast),
-            // we ONLY broadcast to let the main tab handle the UI.
-            if (this.isIframe && !forced) {
-                this.safeSendMessage({
-                    action: 'broadcastReminderState',
-                    hostname: window.location.hostname,
-                    show: true,
-                    value: value,
-                    type: type,
-                    reminderStyle: 'toast'
-                });
-                return; 
-            }
 
             // Build toast message based on type
             let toastMsg = '';
