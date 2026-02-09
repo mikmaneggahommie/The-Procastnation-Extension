@@ -2844,7 +2844,7 @@ class CureVault {
             title = "Frequent Visit Alert";
             timeLabel = `${value}`;
             const windowText = this.settings.reminderTriggers?.launchLimit?.windowSeconds === 86400 ? 'today' : 'this hour';
-            timeUnit = `visits ${windowText}`;
+            timeUnit = 'visits';
             subtitle = `You have visited ${site} ${value} times ${windowText}...`;
             continueText = "Continue Browsing (Unlock Site)";
         } else {
