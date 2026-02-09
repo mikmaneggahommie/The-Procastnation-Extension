@@ -1015,16 +1015,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // This creates a "clean slate" so the next reminder triggers after another full cycle
     if (request.action === 'clearLaunchHistory') {
         const hostname = request.hostname?.replace(/^www\./, '');
+        console.log('[Cure] clearLaunchHistory called for:', hostname);
         if (hostname) {
             (async () => {
                 const stats = await getDailyStats();
+                console.log('[Cure] Before clear, launches:', stats.sites[hostname]?.launches?.length || 0);
                 if (stats.sites[hostname]) {
                     stats.sites[hostname].launches = [];
                     saveStats();
+                    console.log('[Cure] After clear, launches:', stats.sites[hostname].launches.length);
+                } else {
+                    console.log('[Cure] No site stats found for:', hostname, 'Available sites:', Object.keys(stats.sites));
                 }
                 sendResponse({ success: true });
             })();
         } else {
+            console.log('[Cure] clearLaunchHistory: no hostname provided');
             sendResponse({ success: false });
         }
         return true;

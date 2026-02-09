@@ -2961,6 +2961,7 @@ class CureVault {
                     
                     // FIX 168: Clear launch history for a "clean slate" after unlocking
                     if (type === 'launch') {
+                        console.log('[Cure] Sending clearLaunchHistory for:', window.location.hostname);
                         this.safeSendMessage({ 
                             action: 'clearLaunchHistory', 
                             hostname: window.location.hostname 
