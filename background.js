@@ -442,23 +442,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
 
                 // 2. Start new session OR record explicit new visit (Launch)
-                // FIX 158: Intuitive Launch. Record if tracking is needed and (fresh session OR explicit isNewVisit)
+                // FIX 158/159/161: Intuitive & Iterative Launch. 
+                // Record if tracking is needed and (fresh session OR explicit isNewVisit)
                 if (trackingNeeded && (!currentSessionActive || request.isNewVisit)) {
-                    // NOTE: For hard-lock triggers, we ALWAYS use the config window
-                    const hardLockWindowMs = (config.windowSeconds || 3600) * 1000;
-                    siteStats.launches = (siteStats.launches || []).filter(ts => now - ts < hardLockWindowMs);
+                    // CALCULATE MAX WINDOW: We must prune based on the LARGEST active limit window
+                    // to ensure long-window reminders (e.g. daily) aren't prematurely deleted by short-window locks (e.g. hourly).
+                    const windows = [];
+                    if (hardLockActive) windows.push(hardTriggers.launchLimit?.windowSeconds || 3600);
+                    if (pauseActive) windows.push(pauseTriggers.launchLimit?.windowSeconds || 3600);
+                    if (reminderActive) windows.push(reminderTriggers.launchLimit?.windowSeconds || 3600);
+                    
+                    const maxWindowSecs = Math.max(...windows, 3600); // Default to at least 1 hour
+                    const maxWindowMs = maxWindowSecs * 1000;
+                    
+                    // Prune history
+                    if (!siteStats.launches) siteStats.launches = [];
+                    siteStats.launches = siteStats.launches.filter(ts => now - ts < maxWindowMs);
 
-                    const canAddLaunch = !hardLockActive || siteStats.launches.length < config.value;
+                    // RECORD LAUNCH: Increment every time, even if current count exceeds the limit.
+                    // This satisfies the requirement to see "3 visits", "4 visits" while the overlay is showing.
+                    siteStats.launches.push(now);
+                    
+                    if (!siteStats.activeSession) {
+                        siteStats.activeSession = { startTime: now, lastActive: now };
+                    }
+                    siteStats.lastActiveAt = now;
+                    currentSessionActive = true;
 
-                    if (canAddLaunch) {
-                        // Only push if this is actually a new visit or a fresh session start
-                        siteStats.launches.push(now);
-                        if (!siteStats.activeSession) {
-                            siteStats.activeSession = { startTime: now, lastActive: now };
-                        }
-                        siteStats.lastActiveAt = now;
-                        currentSessionActive = true;
-                    } else if (hardLockActive) {
+                    // If we just hit the hard lock limit, mark as locked immediately
+                    if (hardLockActive && siteStats.launches.length >= hardTriggers.launchLimit.value) {
                         isLocked = true;
                     }
                 }
