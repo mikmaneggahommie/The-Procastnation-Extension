@@ -8,6 +8,7 @@ let g_lockSnapshots = {}; // Persistent Rule Snapshots for anti-cheat
 let g_systemInstanceId = null; // Fix: Unique ID to invalidate stale sessionStorage on reinstall/reset
 let g_activeReminders = new Map(); // FIX 129: Track active reminders per hostname for iframe queries
 let g_activeGlobalReminder = null; // FIX 155: Track active global reminder (browser-wide)
+let g_activeTrackers = new Map(); // FIX 131: Strict Tracker Authority (Hostname -> { tabId, lastSeen })
 
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
@@ -591,21 +592,47 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     stats.sites[hostname].activeSession.lastActive = now;
                 }
 
-                 if (deltaSiteSeconds > 0) {
+                if (deltaSiteSeconds > 0) {
                     if (!stats.sites[hostname].usageHistory) stats.sites[hostname].usageHistory = [];
                     
-                    // FIX 131: Deduplicate Usage (Wall-Clock Throttling)
-                    // If multiple frames/tabs report usage simultaneously (e.g. iframe + main tab),
-                    // we limit the record rate to ~1 tick per second to prevent double-counting.
-                    const history = stats.sites[hostname].usageHistory;
-                    const lastEntry = history.length > 0 ? history[history.length - 1] : null;
+                    // FIX 131: Strict Tracker Authority (Double Counting Fix)
+                    // We elect ONE tab to be the "Active Tracker" for this hostname.
+                    // Only the Active Tracker is allowed to increment the usage history.
+                    // If the Active Tracker goes silent (> 5s), we elect the current sender.
                     
-                    // Allow update if:
-                    // 1. No history
-                    // 2. Last update was > 900ms ago (Standard 1s tick)
-                    // 3. Current update is large (> 1s) (Throttled/Background update)
-                    if (!lastEntry || (now - lastEntry.ts >= 900) || deltaSiteSeconds > 1) {
-                        history.push({ ts: now, dur: deltaSiteSeconds });
+                    const senderTabId = sender.tab?.id;
+                    const now = Date.now();
+                    let tracker = g_activeTrackers.get(hostname);
+
+                    // Election Logic:
+                    // 1. No tracker exists
+                    // 2. Current tracker is stale (> 5000ms silence)
+                    // 3. Current tracker IS the sender (keep authority)
+                    if (!tracker || (now - tracker.lastSeen > 5000) || tracker.tabId === senderTabId) {
+                        g_activeTrackers.set(hostname, { tabId: senderTabId, lastSeen: now });
+                        tracker = g_activeTrackers.get(hostname);
+                    }
+
+                    // Strict Enforcement:
+                    // Only accept delta if sender IS the elected tracker.
+                    if (tracker.tabId === senderTabId) {
+                        tracker.lastSeen = now; // Renew lease
+
+                        // Standard De-duplication (Throttle to 1s)
+                        const history = stats.sites[hostname].usageHistory;
+                        const lastEntry = history.length > 0 ? history[history.length - 1] : null;
+
+                        // Allow update if:
+                        // 1. No history
+                        // 2. Last update was > 900ms ago
+                        // 3. Current update is large (> 1s) (Throttled/Background update)
+                        if (!lastEntry || (now - lastEntry.ts >= 900) || deltaSiteSeconds > 1) {
+                            history.push({ ts: now, dur: deltaSiteSeconds });
+                        }
+                    } else {
+                        // Non-authoritative tab: IGNORE delta for accumulation.
+                        // But we still return proper sittingSeconds below so the UI stays synced.
+                        // console.debug(`[Cure] Ignored usage from non-authority tab ${senderTabId} (Active: ${tracker.tabId})`);
                     }
                 }
 
