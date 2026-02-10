@@ -606,9 +606,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                     // Election Logic:
                     // 1. No tracker exists
-                    // 2. Current tracker is stale (> 5000ms silence)
+                    // 2. Current tracker is stale (> 2000ms silence)
                     // 3. Current tracker IS the sender (keep authority)
-                    if (!tracker || (now - tracker.lastSeen > 5000) || tracker.tabId === senderTabId) {
+                    if (!tracker || (now - tracker.lastSeen > 2000) || tracker.tabId === senderTabId) {
                         g_activeTrackers.set(hostname, { tabId: senderTabId, lastSeen: now });
                         tracker = g_activeTrackers.get(hostname);
                     }
@@ -650,17 +650,86 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // FIX 192: Calculate authoritative session duration (sitting duration)
                 // This allows all tabs (main and iframe) to snap to the exact same second.
-                const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
-                const timeoutMs = timeoutMins * 60 * 1000;
-                const sittingSeconds = (stats.sites[hostname].usageHistory || [])
-                    .filter(c => now - c.ts < timeoutMs)
-                    .reduce((acc, c) => acc + (c.dur || 0), 0);
+                // FIX: Use Session Start Time instead of Rolling Window to prevent "Time Travel"/Cap at 30m.
+                let sittingSeconds = 0;
+                const siteStats = stats.sites[hostname]; 
+                
+                if (siteStats.activeSession && siteStats.activeSession.startTime) {
+                    // Calculate total duration of this specific session
+                    // We can use usageHistory to get precise seconds, but we must filter by session start
+                    const sessionStart = siteStats.activeSession.startTime;
+                    const history = stats.sites[hostname].usageHistory || [];
+                    sittingSeconds = history
+                        .filter(c => c.ts >= sessionStart)
+                        .reduce((acc, c) => acc + (c.dur || 0), 0);
+                    
+                    // DEBUG: Log calculation
+                    // console.log(`[Cure] Session Calc: Host=${hostname} Start=${sessionStart} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
+                } else {
+                    // Fallback to rolling window if no active session
+                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
+                    const timeoutMs = timeoutMins * 60 * 1000;
+                    const history = stats.sites[hostname].usageHistory || [];
+                    sittingSeconds = history
+                        .filter(c => now - c.ts < timeoutMs)
+                        .reduce((acc, c) => acc + (c.dur || 0), 0);
+                    
+                     // DEBUG: Log fallback
+                     // console.log(`[Cure] Rolling Calc: Host=${hostname} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
+                }
 
                 saveStats();
+                
+                // NEW: Broadcast authoritative time to all tabs for this host
+                // This ensures "Instant Sync" across all open tabs/iframes
+                chrome.tabs.query({}, (tabs) => {
+                    tabs.forEach(t => {
+                        try {
+                            if (t.url && cleanHost(new URL(t.url).hostname) === hostname) {
+                                chrome.tabs.sendMessage(t.id, { 
+                                    action: 'timerUpdate', 
+                                    seconds: sittingSeconds,
+                                    hostname: hostname
+                                }).catch(() => {});
+                            }
+                        } catch(e) {}
+                    });
+                });
+
                 sendResponse({ success: true, sittingSeconds });
             } catch (e) {
                 console.error('[Cure] trackUsage failed:', e);
                 sendResponse({ success: false, error: e.message });
+            }
+        })();
+        return true;
+    }
+
+    if (request.action === 'getTimerState') {
+        const hostname = cleanHost(request.hostname);
+        (async () => {
+            try {
+                const stats = await getDailyStats();
+                const now = Date.now();
+                let sittingSeconds = 0;
+                const siteStats = stats.sites[hostname];
+
+                if (siteStats && siteStats.activeSession && siteStats.activeSession.startTime) {
+                     const sessionStart = siteStats.activeSession.startTime;
+                     sittingSeconds = (siteStats.usageHistory || [])
+                        .filter(c => c.ts >= sessionStart)
+                        .reduce((acc, c) => acc + (c.dur || 0), 0);
+                } else {
+                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
+                    const timeoutMs = timeoutMins * 60 * 1000;
+                    sittingSeconds = (siteStats?.usageHistory || [])
+                        .filter(c => now - c.ts < timeoutMs)
+                        .reduce((acc, c) => acc + (c.dur || 0), 0);
+                }
+                    
+                sendResponse({ seconds: sittingSeconds });
+            } catch (e) {
+                sendResponse({ seconds: 0, error: e.message });
             }
         })();
         return true;

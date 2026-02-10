@@ -12,7 +12,7 @@ const TIMERS = {
     TOAST_DURATION_MS: 5000,
     AUTO_SCROLL_MODULO: 30,
     SHAKE_ANIMATION_MS: 400,
-    SAVE_INTERVAL_MS: 10000 // Throttle disk writes to every 10s
+    SAVE_INTERVAL_MS: 1000 // Real-time sync for global timer (Fix jitter)
 };
 
 // CRITICAL: Singleton Pattern - Prevent Multiple Instances
@@ -336,9 +336,9 @@ class CureVault {
     handleFocus() {
         if (typeof this.evaluateAllTriggers !== 'function') return;
         // FIX: Instant Sync (Pull-on-Visible)
-        // Immediately fetch latest timer from storage to sync with other tabs
-        if (typeof this.loadTimer === 'function') {
-            this.loadTimer().then(() => {
+        // Immediately fetch latest timer from background (Single Source of Truth)
+        if (typeof this.checkAuthoritativeTime === 'function') {
+            this.checkAuthoritativeTime().then(() => {
                 this.updatePill?.(); // Instant visual update
                 this.evaluateAllTriggers().then(() => this.forceRefreshUI());
             });
@@ -348,17 +348,19 @@ class CureVault {
     }
 
     handleVisibilityChange() {
-        if (typeof this.loadTimer !== 'function') return;
+        // if (typeof this.loadTimer !== 'function') return; // Deprecated loadTimer check
         if (!document.hidden) {
             // FIX: Instant Sync (Pull-on-Visible)
-            this.loadTimer().then(() => {
-                this.updatePill?.(); // Instant visual update
-                if (typeof this.evaluateAllTriggers !== 'function') return;
-                this.evaluateAllTriggers().then(() => {
-                    this.forceRefreshUI();
-                    this.processPendingToasts?.();
+            if (typeof this.checkAuthoritativeTime === 'function') {
+                this.checkAuthoritativeTime().then(() => {
+                    this.updatePill?.(); // Instant visual update
+                    if (typeof this.evaluateAllTriggers !== 'function') return;
+                    this.evaluateAllTriggers().then(() => {
+                        this.forceRefreshUI();
+                        this.processPendingToasts?.();
+                    });
                 });
-            });
+            }
         } else {
             // FIX: Redundant check for reset flag on visibility hide (Tab switch / Compose window)
             if (this.isTypingChallengeActive) {
@@ -381,8 +383,8 @@ class CureVault {
             }
 
             // FIX: Instant Sync (Pull-on-Visible)
-            if (typeof this.loadTimer === 'function') {
-                this.loadTimer().then(() => {
+            if (typeof this.checkAuthoritativeTime === 'function') {
+                this.checkAuthoritativeTime().then(() => {
                     this.updatePill?.();
                     this.evaluateAllTriggers().then(() => {
                         this.forceRefreshUI();
@@ -629,6 +631,26 @@ class CureVault {
 
     handleUpdate(request) {
         if (!this.isContextValid()) return;
+
+        // NEW: Global Timer Sync (Authoritative Broadcast)
+        if (request.action === 'timerUpdate') {
+            const currentHost = this.cleanHost ? this.cleanHost(window.location.hostname) : window.location.hostname.replace(/^www\./, '');
+            if (this.mode === 'up' && request.hostname === currentHost) {
+                // Monotonic Sync: Only accept if greater (prevents travel back)
+                // OR if the difference is significant (e.g. a reset happened)
+                 if (request.seconds > this.activeSeconds) {
+                    this.activeSeconds = request.seconds;
+                    this.updatePill?.();
+                } else if (this.activeSeconds - request.seconds > 10) {
+                    // Critical Drift Correction (e.g. Reset or Reward expiry)
+                    // If we are way ahead of background, we might be the one drifting or a reset happened.
+                    // We trust background.
+                     this.activeSeconds = request.seconds;
+                     this.updatePill?.();
+                }
+            }
+            return;
+        }
 
         // DEBUG TRIGGERS (Work for both Main Tab and Iframes)
         if (request.action === 'debugTrigger') {
@@ -2026,6 +2048,40 @@ class CureVault {
         }, TIMERS.COUNTDOWN_INTERVAL_MS);
     }
 
+    /**
+     * Fetches the authoritative time from the background script.
+     * This is the "Single Source of Truth" ensuring all tabs match.
+     */
+    checkAuthoritativeTime() {
+        if (!this.isContextValid()) return Promise.resolve();
+        // Don't fetch if we are in reward mode (local countdown)
+        if (this.mode === 'down') return Promise.resolve();
+
+        return new Promise(resolve => {
+            this.safeSendMessage({ 
+                action: 'getTimerState', 
+                hostname: window.location.hostname 
+            }, (res) => {
+                if (res && res.seconds !== undefined) {
+                    // console.log(`[Cure] Auth Check: Remote=${res.seconds} Local=${this.activeSeconds}`);
+                    
+                    // Only update if greater (monotonic) or significantly different (reset)
+                    if (res.seconds > this.activeSeconds) {
+                        this.activeSeconds = res.seconds;
+                        this.updatePill?.();
+                    } else if (this.activeSeconds - res.seconds > 10) {
+                        // Drift/Reset correction
+                        this.activeSeconds = res.seconds;
+                        this.updatePill?.();
+                    }
+                } else {
+                    console.warn('[Cure] Auth Check Failed: Invalid response', res);
+                }
+                resolve();
+            });
+        });
+    }
+
     // --- PERSISTENCE ---
     async loadTimer() {
         if (!this.isContextValid()) return;
@@ -2070,11 +2126,12 @@ class CureVault {
     saveTimer() {
         if (!this.isContextValid()) {
             // FIX: Visual Indication of Orphaned State
-            // If the extension context is invalidated (updated/reloaded), verify visuals.
+            // If the extension context is invalidated (updated/reloaded), show reload emoji.
             const pill = this.shadowRoot?.getElementById(this.pillId);
-            if (pill && !pill.innerText.includes('⚠')) {
-                pill.style.border = '2px solid red';
-                pill.innerText += ' ⚠';
+            if (pill) {
+                pill.style.border = '2px solid #FF3B30';
+                pill.style.background = 'rgba(255, 255, 255, 0.9)';
+                pill.innerHTML = `<span style="font-size:18px; cursor:pointer;" onclick="location.reload()">🔄</span>`;
                 pill.title = 'Extension updated. Please reload the page.';
             }
             return;
@@ -2112,7 +2169,9 @@ class CureVault {
         };
 
         // Monotonic check is handled reactively by other tabs via handleStorageChange (Fix 191)
-        chrome.storage.local.set({ [key]: data });
+        // DEPRECATED: Background is now the single source of truth.
+        // We no longer write to this key to prevent race conditions.
+        // chrome.storage.local.set({ [key]: data });
         this.lastSaveTime = now;
     }
 
@@ -2142,7 +2201,7 @@ class CureVault {
         this.lastPassiveSync = Date.now();
     }
 
-    syncDailyStats() {
+    syncDailyStats(full = false) {
         if (!this.isContextValid()) return Promise.resolve();
         const host = window.location.hostname;
         const settings = this.settings || {};
@@ -2165,7 +2224,7 @@ class CureVault {
                 if (res && res.sittingSeconds !== undefined) {
                     if (this.mode === 'up' && res.sittingSeconds > this.activeSeconds) {
                         this.activeSeconds = res.sittingSeconds;
-                        this.saveTimer(); 
+                        this.updatePill?.(); 
                     }
                 }
             });
@@ -2173,9 +2232,13 @@ class CureVault {
             this.lastSyncedBrowserSeconds = this.browserSeconds;
         }
 
+        this.lastSaveTime = Date.now(); // Reset sync timer
+
+        if (!full) return Promise.resolve({});
+
         const triggers = settings.hardLockTriggers || {};
         return new Promise(resolve => {
-            // Fetch Windowed Usage
+            // Fetch Windowed Usage (Heavier)
             this.safeSendMessage({
                 action: 'getWindowedUsage',
                 hostname: host,
@@ -2185,14 +2248,10 @@ class CureVault {
                 if (res) {
                     this.windowedSiteSeconds = res.siteSeconds;
                     this.windowedBrowserSeconds = res.browserSeconds;
-
-                    // FIX 188: Sync threshold state from ground truth in background
+                    // ... reminder sync ...
                     if (res.reminderValue !== undefined && res.reminderValue >= this._lastReminderThreshold) {
                         this._lastReminderThreshold = res.reminderValue;
                         this._lastHeartbeatMinute = res.reminderValue;
-                        
-                        // If background says it's active but we are not showing it, show it.
-                        // If background says it's inactive but we HAVE it, remove it.
                         const isActiveLocally = sessionStorage.getItem('cure_reminder_active') === '1';
                         if (res.reminderActive && !isActiveLocally) {
                             this.renderReminderOverlay(res.reminderValue, 'time', true);
@@ -2334,10 +2393,19 @@ class CureVault {
                  return;
             }
 
-            // --- HEARTBEAT SYNC (Every 10s) ---
-            if (deltaSecs >= 1 && (this.activeSeconds % 10 === 0 || Date.now() - (this.lastSyncTimestamp || 0) > 10000)) {
-                this.lastSyncTimestamp = Date.now();
-                this.syncDailyStats();
+            // --- HEARTBEAT SYNC (Usage: 1s, Triggers: 10s) ---
+            const timeSinceLastSync = Date.now() - (this.lastSyncTimestamp || 0);
+            const isTimeForUsageSync = Date.now() - this.lastSaveTime > TIMERS.SAVE_INTERVAL_MS;
+            
+            if (deltaSecs >= 1 || timeSinceLastSync > 10000 || isTimeForUsageSync) {
+                const needsFullSync = timeSinceLastSync > 10000;
+                
+                if (needsFullSync) {
+                    this.lastSyncTimestamp = Date.now();
+                    this.syncDailyStats(true); // Full sync (Windowed Usage, Launch, etc.)
+                } else if (isTimeForUsageSync && deltaSecs >= 1) {
+                    this.syncDailyStats(false); // Light sync (trackUsage only)
+                }
             }
 
             // --- REACTIVE UI SYNC ---
@@ -3001,7 +3069,8 @@ class CureVault {
     }
 
     renderPill() {
-        if (!this.isContextValid()) return;
+        // Allow rendering even if invalid to show the "reload" state
+        // if (!this.isContextValid()) return;
         const root = this.ensureShadow();
         if (!root || root.getElementById(this.pillId)) return;
         const pill = document.createElement('div');
@@ -3013,8 +3082,20 @@ class CureVault {
 
     updatePill() {
         if (!this.stateInitialized) return;
-        // FIX 134: Allow iframes to update pill
-        // if (window.self !== window.top ...
+        
+        // FIX: Handle Invalid Context (Extension Update)
+        if (!this.isContextValid()) {
+            const root = this.ensureShadow();
+            if (!root) return;
+            this.renderPill();
+            const pill = root.getElementById(this.pillId);
+            if (pill) {
+                pill.style.border = '2px solid #FF3B30';
+                pill.innerHTML = `<span style="font-size:18px; cursor:pointer;" onclick="location.reload()">🔄</span>`;
+                pill.title = 'Extension updated. Please reload the page.';
+            }
+            return;
+        }
 
         // Authority: Check visibility logic before doing ANY rendering
         if (!this.shouldShowPill()) {
