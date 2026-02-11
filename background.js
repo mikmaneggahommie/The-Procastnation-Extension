@@ -10,12 +10,48 @@ let g_activeReminders = new Map(); // FIX 129: Track active reminders per hostna
 let g_activeGlobalReminder = null; // FIX 155: Track active global reminder (browser-wide)
 let g_activeTrackers = new Map(); // FIX 131: Strict Tracker Authority (Hostname -> { tabId, lastSeen })
 let g_settingsChangedAt = 0; // FIX: Cooldown guard to prevent stale evaluations after settings change
+let g_reminderStateRestored = false; // FIX: Ensure we don't init baselines before storage is loaded
 
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
 
+// FIX 129/201: Persistent Reminder State
+const saveReminderSnapshots = () => {
+    const serializedReminders = Array.from(g_activeReminders.entries());
+    chrome.storage.local.set({ 
+        activeReminders: serializedReminders,
+        activeGlobalReminder: g_activeGlobalReminder
+    });
+};
+
+const loadReminderSnapshots = () => {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['activeReminders', 'activeGlobalReminder'], res => {
+            if (res.activeReminders) {
+                g_activeReminders = new Map(res.activeReminders);
+                console.log(`[Cure] Restored ${g_activeReminders.size} active reminders.`);
+            }
+            if (res.activeGlobalReminder) {
+                g_activeGlobalReminder = res.activeGlobalReminder;
+                console.log('[Cure] Restored active global reminder.');
+            }
+            g_reminderStateRestored = true;
+            resolve();
+        });
+    });
+};
+
 // Helper: Standardize hostname (strip www.)
-const cleanHost = (host) => host ? host.replace(/^www\./, '') : '';
+const ensureRestored = () => {
+    if (g_reminderStateRestored) return Promise.resolve();
+    return new Promise(resolve => {
+        const check = () => {
+            if (g_reminderStateRestored) resolve();
+            else setTimeout(check, 50);
+        };
+        check();
+    });
+};
 
 /**
  * Centrally evaluates reminders based on current site and browser usage.
@@ -29,6 +65,9 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
     // This prevents stale trackUsage/trackLaunch responses from triggering reminders
     // during the async broadcast gap where old 'show:true' messages are still in flight.
     if (now - g_settingsChangedAt < 1500) return;
+
+    // 0. Wait for Persistent State Restoration
+    if (!g_reminderStateRestored) return;
 
     const siteStats = stats.sites[hostname];
     if (!siteStats) return;
@@ -306,6 +345,9 @@ function broadcastReminderStateCentral(payload, excludeTabId = null) {
         }
     }
 
+    // FIX 129/201: Always persist state changes immediately
+    saveReminderSnapshots();
+
     // 2. Broadcast Function
     const broadcastToTab = (tabId) => {
         const performMessaging = (frameId = null) => {
@@ -368,6 +410,9 @@ chrome.storage.local.get(['lockSnapshots', 'systemInstanceId'], res => {
         g_systemInstanceId = Math.random().toString(36).substring(2, 15);
         chrome.storage.local.set({ systemInstanceId: g_systemInstanceId });
     }
+    
+    // FIX 129/201: Restore active reminders after ID/Settings sync
+    loadReminderSnapshots();
 });
 
 
@@ -1414,55 +1459,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    // FIX 129/155: Query for active reminder state (used by tabs/iframes on load)
-    // FIX 171: Include reminderStyle for toast persistence
     if (request.action === 'getReminderState') {
-        const hostname = cleanHost(request.hostname);
-        const globalState = g_activeGlobalReminder;
-        
-        // Priority 1: Global Reminder (Active Browser-wide)
-        if (globalState && globalState.active) {
-            return sendResponse({ 
-                active: true, 
-                value: globalState.value, 
-                type: globalState.type, 
-                isGlobal: true, 
-                reminderStyle: globalState.reminderStyle 
-            });
-        }
+        (async () => {
+            await ensureRestored();
+            const hostname = cleanHost(request.hostname);
+            const globalState = g_activeGlobalReminder;
+            
+            // Priority 1: Global Reminder (Active Browser-wide)
+            if (globalState && globalState.active) {
+                return sendResponse({ 
+                    active: true, 
+                    value: globalState.value, 
+                    type: globalState.type, 
+                    isGlobal: true, 
+                    reminderStyle: globalState.reminderStyle 
+                });
+            }
 
-        // Priority 2: Site Activity (Time) Reminder
-        const timeKey = `${hostname}_time`;
-        const timeState = g_activeReminders.get(timeKey);
-        if (timeState && timeState.active) {
-            return sendResponse({ 
-                active: true, 
-                value: timeState.value, 
-                type: 'time', 
-                isGlobal: false, 
-                hostname: hostname, 
-                reminderStyle: timeState.reminderStyle,
-                lastDismissedTime: timeState.lastDismissedTime
-            });
-        }
+            // Priority 2: Site Activity (Time) Reminder
+            const timeKey = `${hostname}_time`;
+            const timeState = g_activeReminders.get(timeKey);
+            if (timeState && timeState.active) {
+                return sendResponse({ 
+                    active: true, 
+                    value: timeState.value, 
+                    type: 'time', 
+                    isGlobal: false, 
+                    hostname: hostname, 
+                    reminderStyle: timeState.reminderStyle,
+                    lastDismissedTime: timeState.lastDismissedTime
+                });
+            }
 
-        // Priority 3: Launch Limit Reminder
-        const launchKey = `${hostname}_launch`;
-        const launchState = g_activeReminders.get(launchKey);
-        if (launchState && launchState.active) {
-            return sendResponse({ 
-                active: true, 
-                value: launchState.value, 
-                type: 'launch', 
-                isGlobal: false, 
-                hostname: hostname, 
-                reminderStyle: launchState.reminderStyle,
-                lastDismissedTime: launchState.lastDismissedTime
-            });
-        }
+            // Priority 3: Launch Limit Reminder
+            const launchKey = `${hostname}_launch`;
+            const launchState = g_activeReminders.get(launchKey);
+            if (launchState && launchState.active) {
+                return sendResponse({ 
+                    active: true, 
+                    value: launchState.value, 
+                    type: 'launch', 
+                    isGlobal: false, 
+                    hostname: hostname, 
+                    reminderStyle: launchState.reminderStyle,
+                    lastDismissedTime: launchState.lastDismissedTime
+                });
+            }
 
-        // No active reminder
-        sendResponse({ active: false });
+            sendResponse({ active: false });
+        })();
         return true;
     }
 
