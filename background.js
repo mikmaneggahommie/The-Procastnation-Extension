@@ -1154,71 +1154,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         g_activeGlobalReminder = null;
 
         // 3. Proactively establish precision baselines SYNCHRONOUSLY
-        // g_dailyStats is cached in memory, so getDailyStats() resolves instantly.
-        // This MUST happen before any evaluateReminders can run (closes the async race).
-        (async () => {
-            try {
-                const stats = await getDailyStats();
-
-                Object.keys(stats.sites || {}).forEach(host => {
-                    const s = stats.sites[host];
-                    
-                    // Time Baseline
-                    if (s.activeSession && s.activeSession.startTime) {
-                        const sittingSecs = (s.usageHistory || [])
-                            .filter(c => c.ts >= s.activeSession.startTime)
-                            .reduce((acc, c) => acc + (c.dur || 0), 0);
-                        
-                        const rType = newSettings.reminderIntervalType || 'repeating';
-                        const interval = newSettings.reminderInterval || 15;
-                        g_activeReminders.set(`${host}_time`, {
-                            configHash: `site_${rType}_${interval}`,
-                            baselineSecs: sittingSecs,
-                            lastTriggeredOffset: 0,
-                            onceTriggered: false,
-                            rType: rType,
-                            type: 'time',
-                            active: false
-                        });
-                        console.log(`[Cure] Clean Slate Baseline: ${host} = ${sittingSecs}s (Config: site_${rType}_${interval})`);
-                    }
-
-                    // Launch Baseline
-                    if (s.launches) {
-                        const lLimit = newSettings.reminderTriggers?.launchLimit?.value || 5;
-                        const lType = newSettings.reminderTriggers?.launchLimit?.type || 'repeating';
-                        g_activeReminders.set(`${host}_launch`, {
-                            configHash: `launch_${lType}_${lLimit}`,
-                            baselineCount: s.launches.length,
-                            lastTriggeredOffset: 0,
-                            onceTriggered: false,
-                            rType: lType,
-                            type: 'launch',
-                            active: false
-                        });
-                    }
-                });
-
-                const browserSecs = (stats.browserUsageHistory || []).reduce((sum, entry) => sum + entry.dur, 0);
-                const brType = newSettings.reminderBrowserType || 'once';
-                const brLimitMin = (newSettings.reminderTriggers?.browserLimit?.value) || 120;
-                g_activeGlobalReminder = {
-                    configHash: `global_${brType}_${brLimitMin * 60}`,
-                    baselineSecs: browserSecs,
-                    lastTriggeredOffset: 0,
-                    onceTriggered: false,
-                    rMode: brType,
-                    type: 'browser',
-                    active: false
-                };
-
-                console.log('[Cure] Clean Slate baselines established.');
-            } catch (e) {
-                console.error('[Cure] Proactive Clean Slate failed:', e);
-                g_activeReminders.clear();
-                g_activeGlobalReminder = null;
-            }
-        })();
+        // FIX: Removed inaccurate proactive baseline calculation (Fix 195).
+        // relying on accurate live data from evaluateReminders lazy init is safer.
+        // The g_activeReminders.clear() above ensures a clean slate.
 
         chrome.storage.sync.set({ settings: newSettings }, async () => {
             if (chrome.runtime.lastError) {
