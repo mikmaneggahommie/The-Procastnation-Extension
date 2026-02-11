@@ -2501,23 +2501,28 @@ class CureVault {
             bgColor = '#34C759';
         }
 
+        const bottomOffset = this.isIframe ? '15px' : '35px';
+        const padding = this.isIframe ? '6px 12px' : '10px 20px';
+        const fontSize = this.isIframe ? '11px' : '14px';
+        const gap = this.isIframe ? '6px' : '12px';
+
         popout.style.cssText = `
             position: fixed;
-            bottom: 35px;
+            bottom: ${bottomOffset};
             left: 50%;
             transform: translateX(-50%);
             background: ${bgColor};
             color: white;
-            padding: 10px 20px;
+            padding: ${padding};
             border-radius: 50px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             z-index: 2147483647;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 14px;
+            font-size: ${fontSize};
             font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: ${gap};
             opacity: 0; 
             transition: opacity 0.3s ease, transform 0.3s ease;
             white-space: nowrap;
@@ -2533,7 +2538,9 @@ class CureVault {
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '✕';
-        closeBtn.style.cssText = "background:rgba(255,255,255,0.2); border:none; width:20px; height:20px; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;";
+        const closeSize = this.isIframe ? '16px' : '20px';
+        const closeFontSize = this.isIframe ? '10px' : '12px';
+        closeBtn.style.cssText = `background:rgba(255,255,255,0.2); border:none; width:${closeSize}; height:${closeSize}; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:${closeFontSize}; flex-shrink:0;`;
         
         // Handle Close Button Click
         // FIX 171: Broadcast dismissal so all tabs/iframes remove the toast
