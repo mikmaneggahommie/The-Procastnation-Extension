@@ -9,12 +9,347 @@ let g_systemInstanceId = null; // Fix: Unique ID to invalidate stale sessionStor
 let g_activeReminders = new Map(); // FIX 129: Track active reminders per hostname for iframe queries
 let g_activeGlobalReminder = null; // FIX 155: Track active global reminder (browser-wide)
 let g_activeTrackers = new Map(); // FIX 131: Strict Tracker Authority (Hostname -> { tabId, lastSeen })
+let g_settingsChangedAt = 0; // FIX: Cooldown guard to prevent stale evaluations after settings change
 
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
 
 // Helper: Standardize hostname (strip www.)
 const cleanHost = (host) => host ? host.replace(/^www\./, '') : '';
+
+/**
+ * Centrally evaluates reminders based on current site and browser usage.
+ * Broadcasts to all tabs if a threshold is crossed.
+ */
+function evaluateReminders(stats, hostname, sittingSeconds, now) {
+    if (!g_settingsCache || g_settingsCache.masterReminders === false) return;
+
+    // FIX: Cooldown guard — skip evaluation for 1500ms after a settings change.
+    // This prevents stale trackUsage/trackLaunch responses from triggering reminders
+    // during the async broadcast gap where old 'show:true' messages are still in flight.
+    if (now - g_settingsChangedAt < 1500) return;
+
+    const siteStats = stats.sites[hostname];
+    if (!siteStats) return;
+
+    const rTriggers = g_settingsCache.reminderTriggers || {};
+    const rStyle = g_settingsCache.reminderStyle || 'overlay';
+    const mins = Math.floor(sittingSeconds / 60);
+    
+    // 1. Site Activity Reminder
+    if (g_settingsCache.reminderIntervalEnabled !== false) {
+        const rInt = (g_settingsCache.reminderInterval || 15) * 60;
+        const intervalMins = rInt / 60;
+        const rType = g_settingsCache.reminderIntervalType || 'repeating';
+        const configHash = `site_${rType}_${intervalMins}`;
+        const reminderKey = `${hostname}_time`;
+        
+        let state = g_activeReminders.get(reminderKey);
+        if (!state || state.configHash !== configHash) {
+            const wasActive = state && state.active;
+            state = {
+                configHash,
+                baselineSecs: sittingSeconds, // PRECISION: Store raw seconds
+                lastTriggeredOffset: 0,
+                onceTriggered: false,
+                rType: rType,
+                type: 'time',
+                active: false 
+            };
+            g_activeReminders.set(reminderKey, state);
+            console.log(`[Cure] Established Precision Baseline for ${hostname}: ${sittingSeconds}s (Config: ${configHash})`);
+            
+            if (wasActive) {
+                broadcastReminderStateCentral({ hostname: hostname, show: false, type: 'time' });
+            }
+        }
+
+        const effectiveSecs = sittingSeconds - state.baselineSecs;
+        const currentMins = Math.floor(sittingSeconds / 60);
+
+        if (state.rType === 'once') {
+            if (!state.active && !state.onceTriggered && effectiveSecs >= rInt) {
+                state.onceTriggered = true;
+                broadcastReminderStateCentral({
+                    hostname: hostname,
+                    show: true,
+                    value: currentMins, 
+                    type: 'time',
+                    reminderStyle: rStyle,
+                    rMode: 'once'
+                });
+            } else if (state.active && rStyle === 'toast' && currentMins > (state.lastHeartbeat || 0)) {
+                state.lastHeartbeat = currentMins;
+                broadcastReminderStateCentral({
+                    hostname: hostname,
+                    show: true,
+                    value: currentMins,
+                    type: 'time',
+                    reminderStyle: 'toast',
+                    rMode: 'once'
+                });
+            }
+        } else {
+            // REPEATING
+            const currentOffset = Math.floor(effectiveSecs / rInt) * rInt;
+            if (currentOffset > 0 && currentOffset > state.lastTriggeredOffset) {
+                state.lastTriggeredOffset = currentOffset;
+                broadcastReminderStateCentral({
+                    hostname: hostname,
+                    show: true,
+                    value: currentMins,
+                    type: 'time',
+                    reminderStyle: rStyle,
+                    rMode: 'repeating'
+                });
+            } else if (state.active && rStyle === 'toast' && currentMins > (state.lastHeartbeat || 0)) {
+                state.lastHeartbeat = currentMins;
+                broadcastReminderStateCentral({
+                    hostname: hostname,
+                    show: true,
+                    value: currentMins,
+                    type: 'time',
+                    reminderStyle: 'toast',
+                    rMode: 'repeating'
+                });
+            }
+        }
+    }
+
+    // 2. Global: Daily Screen Time (Browser Limit)
+    if (rTriggers.browserLimit?.enabled && stats.browserUsageHistory) {
+        const browserSeconds = stats.browserUsageHistory.reduce((sum, entry) => sum + entry.dur, 0);
+        const minsSpent = Math.floor(browserSeconds / 60);
+        const rType = g_settingsCache.reminderBrowserType || 'once';
+        const limitGlobalSecs = (rTriggers.browserLimit.value || 120) * 60;
+        const configHash = `global_${rType}_${limitGlobalSecs}`;
+        
+        if (!g_activeGlobalReminder || g_activeGlobalReminder.configHash !== configHash) {
+            const wasActive = g_activeGlobalReminder && g_activeGlobalReminder.active;
+            g_activeGlobalReminder = {
+                configHash,
+                baselineSecs: browserSeconds, // PRECISION: Store raw seconds
+                lastTriggeredOffset: 0,
+                onceTriggered: false,
+                rMode: rType,
+                type: 'browser',
+                reminderStyle: rStyle,
+                active: false 
+            };
+
+            if (wasActive) {
+                broadcastReminderStateCentral({ hostname: 'global', show: false, type: 'browser' });
+            }
+        }
+
+        const effectiveSecs = browserSeconds - g_activeGlobalReminder.baselineSecs;
+
+        if (g_activeGlobalReminder.rMode === 'once') {
+            if (!g_activeGlobalReminder.active && !g_activeGlobalReminder.onceTriggered && effectiveSecs >= limitGlobalSecs) {
+                g_activeGlobalReminder.onceTriggered = true;
+                broadcastReminderStateCentral({
+                    hostname: 'global',
+                    show: true,
+                    value: minsSpent,
+                    type: 'browser',
+                    reminderStyle: rStyle,
+                    rMode: 'once'
+                });
+            } else if (g_activeGlobalReminder.active && rStyle === 'toast' && minsSpent > (g_activeGlobalReminder.lastHeartbeat || 0)) {
+                g_activeGlobalReminder.lastHeartbeat = minsSpent;
+                broadcastReminderStateCentral({
+                    hostname: 'global',
+                    show: true,
+                    value: minsSpent,
+                    type: 'browser',
+                    reminderStyle: 'toast',
+                    rMode: 'once'
+                });
+            }
+        } else {
+            // REPEATING
+            const currentOffset = Math.floor(effectiveSecs / limitGlobalSecs) * limitGlobalSecs;
+            if (currentOffset > 0 && currentOffset > g_activeGlobalReminder.lastTriggeredOffset) {
+                g_activeGlobalReminder.lastTriggeredOffset = currentOffset;
+                broadcastReminderStateCentral({
+                    hostname: 'global',
+                    show: true,
+                    value: minsSpent,
+                    type: 'browser',
+                    reminderStyle: rStyle,
+                    rMode: 'repeating'
+                });
+            } else if (g_activeGlobalReminder.active && rStyle === 'toast' && minsSpent > (g_activeGlobalReminder.lastHeartbeat || 0)) {
+                g_activeGlobalReminder.lastHeartbeat = minsSpent;
+                broadcastReminderStateCentral({
+                    hostname: 'global',
+                    show: true,
+                    value: minsSpent,
+                    type: 'browser',
+                    reminderStyle: 'toast',
+                    rMode: 'repeating'
+                });
+            }
+        }
+    }
+
+    // 3. Launch Limit Reminder
+    if (rTriggers.launchLimit?.enabled && siteStats.launches) {
+        const limit = rTriggers.launchLimit.value || 5;
+        const rType = rTriggers.launchLimit.type || 'repeating';
+        const configHash = `launch_${rType}_${limit}`;
+        const reminderKey = `${hostname}_launch`;
+        
+        let state = g_activeReminders.get(reminderKey);
+        if (!state || state.configHash !== configHash) {
+            const wasActive = state && state.active;
+            state = {
+                configHash,
+                baselineCount: siteStats.launches.length, 
+                lastTriggeredOffset: 0,
+                onceTriggered: false,
+                rType: rType,
+                type: 'launch',
+                active: false // Force inactive for Clean Slate
+            };
+            g_activeReminders.set(reminderKey, state);
+
+            if (wasActive) {
+                // Force dismissal of the old launch reminder
+                broadcastReminderStateCentral({
+                    hostname: hostname,
+                    show: false,
+                    type: 'launch'
+                });
+            }
+        }
+
+        const effectiveLaunches = siteStats.launches.length - state.baselineCount;
+
+        if (state.rType === 'once') {
+            if (!state.active && !state.onceTriggered && effectiveLaunches >= limit) {
+                state.onceTriggered = true;
+                broadcastReminderStateCentral({
+                    hostname: hostname,
+                    show: true,
+                    value: siteStats.launches.length, // total absolute for display
+                    type: 'launch',
+                    reminderStyle: rStyle,
+                    rMode: 'once'
+                });
+            }
+        } else {
+            // REPEATING
+            const currentOffset = Math.floor(effectiveLaunches / limit) * limit;
+            if (currentOffset > 0 && currentOffset > state.lastTriggeredOffset) {
+                state.lastTriggeredOffset = currentOffset;
+                broadcastReminderStateCentral({
+                    hostname: hostname,
+                    show: true,
+                    value: siteStats.launches.length,
+                    type: 'launch',
+                    reminderStyle: rStyle,
+                    rMode: 'repeating'
+                });
+            }
+        }
+    }
+}
+
+/**
+ * Reusable broadcast helper with deep-frame media enforcement
+ */
+function broadcastReminderStateCentral(payload, excludeTabId = null) {
+    const { hostname, show, value, type, reminderStyle, rMode } = payload;
+    const cleanedHostname = cleanHost(hostname);
+    const isGlobal = type === 'browser' || hostname === 'global';
+
+    // 1. Update Internal Auth State
+    const compositeKey = isGlobal ? 'global' : `${cleanedHostname}_${type}`;
+    if (show) {
+        if (isGlobal) {
+            g_activeGlobalReminder = { 
+                ...(g_activeGlobalReminder || {}),
+                value, type, reminderStyle, rMode,
+                active: true
+            };
+        } else {
+            const existing = g_activeReminders.get(compositeKey);
+            g_activeReminders.set(compositeKey, { 
+                ...(existing || {}),
+                value, type, active: true, reminderStyle, rType: rMode 
+            });
+        }
+    } else {
+        const now = Date.now();
+        if (isGlobal) {
+            if (g_activeGlobalReminder) {
+                g_activeGlobalReminder.active = false;
+                g_activeGlobalReminder.lastDismissedTime = now;
+            }
+        } else {
+            const existing = g_activeReminders.get(compositeKey);
+            if (existing) {
+                g_activeReminders.set(compositeKey, { 
+                    ...existing, 
+                    active: false, 
+                    lastDismissedTime: now 
+                });
+            }
+        }
+    }
+
+    // 2. Broadcast Function
+    const broadcastToTab = (tabId) => {
+        const performMessaging = (frameId = null) => {
+            const options = frameId !== null ? { frameId } : {};
+            
+            // Media Enforcement (Pause/Resume)
+            // FIX 177: Toasts should not pause media.
+            if (reminderStyle !== 'toast') {
+                chrome.tabs.sendMessage(tabId, {
+                    action: 'tabMediaAction',
+                    type: show ? 'pause' : 'resume'
+                }, options).catch(() => {});
+            }
+
+            // UI Instruction
+            if (show) {
+                chrome.tabs.sendMessage(tabId, {
+                    action: reminderStyle === 'toast' ? 'forceReminderToast' : 'forceReminderOverlay',
+                    hostname: isGlobal ? 'global' : cleanedHostname,
+                    value, type, reminderStyle
+                }, options).catch(() => {});
+            } else {
+                chrome.tabs.sendMessage(tabId, {
+                    action: 'dismissReminderOverlay',
+                    hostname: (hostname === 'all') ? 'all' : (isGlobal ? 'global' : cleanedHostname)
+                }, options).catch(() => {});
+            }
+        };
+
+        if (chrome.webNavigation) {
+            chrome.webNavigation.getAllFrames({ tabId }, (frames) => {
+                if (chrome.runtime.lastError || !frames || frames.length === 0) {
+                    performMessaging(); // Fallback to top frame
+                } else {
+                    frames.forEach(f => performMessaging(f.frameId));
+                }
+            });
+        } else {
+            performMessaging();
+        }
+    };
+
+    // 3. Target all tabs (including sender to reach its iframes)
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            if (tab.id) {
+                broadcastToTab(tab.id);
+            }
+        });
+    });
+}
 
 // Load Snapshots on Start
 chrome.storage.local.get(['lockSnapshots', 'systemInstanceId'], res => {
@@ -493,6 +828,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
                 }
 
+                // --- REMINDER EVALUATION (Centralized) ---
+                let sittingSeconds = 0;
+                if (siteStats.activeSession && siteStats.activeSession.startTime) {
+                    sittingSeconds = (siteStats.usageHistory || [])
+                        .filter(c => c.ts >= siteStats.activeSession.startTime)
+                        .reduce((acc, c) => acc + (c.dur || 0), 0);
+                }
+                evaluateReminders(stats, hostname, sittingSeconds, now);
+
                 // 3. Info for UI (Calculate based on effective window)
                 const history = (siteStats.launches || []).filter(ts => now - ts < windowMs);
                 const remaining = (hardTriggers.launchLimit?.enabled) ? Math.max(0, hardTriggers.launchLimit.value - history.length) : 99;
@@ -506,7 +850,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // Windowed Usage Stats (Merged for performance)
                 const siteWinMs = (request.siteWindowSeconds || 86400) * 1000;
                 const browserWinMs = (request.browserWindowSeconds || 86400) * 1000;
-
+                
                 const siteSeconds = (siteStats.usageHistory || [])
                     .filter(entry => now - entry.ts < siteWinMs)
                     .reduce((sum, entry) => sum + entry.dur, 0);
@@ -678,6 +1022,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                      // console.log(`[Cure] Rolling Calc: Host=${hostname} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
                 }
 
+                // --- REMINDER EVALUATION (Centralized) ---
+                evaluateReminders(stats, hostname, sittingSeconds, now);
+
                 saveStats();
                 
                 // NEW: Broadcast authoritative time to all tabs for this host
@@ -759,10 +1106,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const res = { siteSeconds: siteSum, browserSeconds: browserSum };
                 
                 // FIX 188: Provide the current reminder state so tabs can sync their thresholds
-                const siteState = g_activeReminders.get(hostname);
+                const siteState = g_activeReminders.get(`${hostname}_time`);
                 if (siteState) {
                     res.reminderActive = siteState.active;
-                    res.reminderValue = siteState.value;
+                    res.reminderValue = siteState.value; // Authoritative absolute value
                     res.reminderStyle = siteState.reminderStyle;
                 }
                 
@@ -791,15 +1138,94 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'updateSettings') {
         const newSettings = request.settings;
-        chrome.storage.sync.set({ settings: newSettings }, () => {
+
+        // 🛑 ABSOLUTE CLEAN SLATE (SYNCHRONOUS AUTHORITY) 🛑
+        // Synchronously clear memory and update cache BEFORE any async storage calls.
+        // This ensures the VERY NEXT evaluateReminders call sees the new rules.
+        g_settingsChangedAt = Date.now(); // FIX: Arm cooldown guard FIRST
+        g_settingsCache = newSettings;
+        updateBlockingRules(newSettings?.blacklist || []);
+
+        // 1. Force dismissal of any currently visible reminders extension-wide
+        broadcastReminderStateCentral({ hostname: 'all', show: false });
+
+        // 2. Wipe memory
+        g_activeReminders.clear();
+        g_activeGlobalReminder = null;
+
+        // 3. Proactively establish precision baselines SYNCHRONOUSLY
+        // g_dailyStats is cached in memory, so getDailyStats() resolves instantly.
+        // This MUST happen before any evaluateReminders can run (closes the async race).
+        (async () => {
+            try {
+                const stats = await getDailyStats();
+
+                Object.keys(stats.sites || {}).forEach(host => {
+                    const s = stats.sites[host];
+                    
+                    // Time Baseline
+                    if (s.activeSession && s.activeSession.startTime) {
+                        const sittingSecs = (s.usageHistory || [])
+                            .filter(c => c.ts >= s.activeSession.startTime)
+                            .reduce((acc, c) => acc + (c.dur || 0), 0);
+                        
+                        const rType = newSettings.reminderIntervalType || 'repeating';
+                        const interval = newSettings.reminderInterval || 15;
+                        g_activeReminders.set(`${host}_time`, {
+                            configHash: `site_${rType}_${interval}`,
+                            baselineSecs: sittingSecs,
+                            lastTriggeredOffset: 0,
+                            onceTriggered: false,
+                            rType: rType,
+                            type: 'time',
+                            active: false
+                        });
+                        console.log(`[Cure] Clean Slate Baseline: ${host} = ${sittingSecs}s (Config: site_${rType}_${interval})`);
+                    }
+
+                    // Launch Baseline
+                    if (s.launches) {
+                        const lLimit = newSettings.reminderTriggers?.launchLimit?.value || 5;
+                        const lType = newSettings.reminderTriggers?.launchLimit?.type || 'repeating';
+                        g_activeReminders.set(`${host}_launch`, {
+                            configHash: `launch_${lType}_${lLimit}`,
+                            baselineCount: s.launches.length,
+                            lastTriggeredOffset: 0,
+                            onceTriggered: false,
+                            rType: lType,
+                            type: 'launch',
+                            active: false
+                        });
+                    }
+                });
+
+                const browserSecs = (stats.browserUsageHistory || []).reduce((sum, entry) => sum + entry.dur, 0);
+                const brType = newSettings.reminderBrowserType || 'once';
+                const brLimitMin = (newSettings.reminderTriggers?.browserLimit?.value) || 120;
+                g_activeGlobalReminder = {
+                    configHash: `global_${brType}_${brLimitMin * 60}`,
+                    baselineSecs: browserSecs,
+                    lastTriggeredOffset: 0,
+                    onceTriggered: false,
+                    rMode: brType,
+                    type: 'browser',
+                    active: false
+                };
+
+                console.log('[Cure] Clean Slate baselines established.');
+            } catch (e) {
+                console.error('[Cure] Proactive Clean Slate failed:', e);
+                g_activeReminders.clear();
+                g_activeGlobalReminder = null;
+            }
+        })();
+
+        chrome.storage.sync.set({ settings: newSettings }, async () => {
             if (chrome.runtime.lastError) {
                 console.error('[Cure] Save Failed:', chrome.runtime.lastError);
                 sendResponse({ success: false, error: chrome.runtime.lastError.message });
                 return;
             }
-
-            g_settingsCache = newSettings; // Update live cache
-            updateBlockingRules(newSettings?.blacklist || []);
 
             // Propagate updates to all active tabs
             chrome.tabs.query({}, (tabs) => {
@@ -808,14 +1234,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         try {
                             const url = new URL(tab.url);
                             const tabHost = cleanHost(url.hostname);
-                            // AUTHORITATIVE BROADCAST: Send tab-specific frozen settings if locked.
                             const finalSettings = g_lockSnapshots[tabHost] || newSettings;
                             chrome.tabs.sendMessage(tab.id, {
                                 action: 'settingsUpdated',
                                 settings: finalSettings
                             }).catch(() => {});
                         } catch (e) {
-                            // Fallback for chrome:// etc
                             chrome.tabs.sendMessage(tab.id, {
                                 action: 'settingsUpdated',
                                 settings: newSettings
@@ -1038,166 +1462,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    // FIX 128: Cross-Tab Reminder Broadcast
-    // FIX 129: Extended to use deep frame broadcast like Strict Lock
-    // Broadcasts reminder overlay show/dismiss to ALL tabs AND embedded iframes
+    // FIX 128/201: Generalized Cross-Tab Reminder Broadcast
     if (request.action === 'broadcastReminderState') {
-        const { hostname, show, value, type, reminderStyle } = request;
-        const currentTabId = sender.tab?.id;
-        const cleanedHostname = cleanHost(hostname);
-        const isGlobal = type === 'browser';
-        
-        // FIX 129/155: Track reminder state using cleaned hostname for consistency
-        // FIX 171: Also store reminderStyle for toast persistence
-        if (show) {
-            if (isGlobal) {
-                g_activeGlobalReminder = { value, type, reminderStyle };
-            } else {
-                g_activeReminders.set(cleanedHostname, { value, type, active: true, reminderStyle });
-            }
-        } else {
-            // FIX 178: Track dismissal time to synchronize grace periods across tabs
-            const now = Date.now();
-            if (isGlobal) {
-                g_activeGlobalReminder = null;
-                // We'll use a specific key for global dismissal if needed, 
-                // but usually global reminders (browser screen time) are 
-                // handled differently. Let's focus on site-specific for now.
-            } else {
-                const existing = g_activeReminders.get(cleanedHostname);
-                if (existing) {
-                    g_activeReminders.set(cleanedHostname, { 
-                        ...existing, 
-                        active: false, 
-                        lastDismissedTime: now 
-                    });
-                } else {
-                    g_activeReminders.set(cleanedHostname, { 
-                        active: false, 
-                        lastDismissedTime: now 
-                    });
-                }
-            }
-        }
-
-        const broadcastToAllFrames = (tabId, isCurrentTab = false) => {
-            console.log(`[Cure] Broadcasting to tab ${tabId} (isCurrentTab: ${isCurrentTab})`);
-            
-            const performFallbackBroadcast = () => {
-                console.log(`[Cure] Performing fallback broadcast to tab ${tabId}`);
-                 // 1. Media Action (Broadcast to all frames)
-                 // FIX 177: Toasts should not pause media.
-                 if (reminderStyle !== 'toast') {
-                     chrome.tabs.sendMessage(tabId, {
-                         action: 'tabMediaAction',
-                         type: show ? 'pause' : 'resume'
-                     }).catch(() => {});
-                 }
-
-                // 2. Reminder Action (Broadcast to all frames, content.js filters by hostname)
-                if (show) {
-                    if (reminderStyle === 'toast') {
-                        chrome.tabs.sendMessage(tabId, {
-                            action: 'forceReminderToast',
-                            hostname: isGlobal ? 'global' : cleanedHostname,
-                            value: value,
-                            type: type
-                        }).catch(() => {});
-                    } else {
-                        chrome.tabs.sendMessage(tabId, {
-                            action: 'forceReminderOverlay',
-                            hostname: isGlobal ? 'global' : cleanedHostname,
-                            value: value,
-                            type: type
-                        }).catch(() => {});
-                    }
-                } else {
-                    chrome.tabs.sendMessage(tabId, {
-                        action: 'dismissReminderOverlay',
-                        hostname: isGlobal ? 'global' : cleanedHostname
-                    }).catch(() => {});
-                }
-            };
-
-            if (chrome.webNavigation) {
-                chrome.webNavigation.getAllFrames({ tabId: tabId }, (frames) => {
-                    if (chrome.runtime.lastError || !frames || frames.length === 0) {
-                        console.warn(`[Cure] Failed to get frames for tab ${tabId}`, chrome.runtime.lastError);
-                        performFallbackBroadcast();
-                        return;
-                    }
-                    console.log(`[Cure] Found ${frames.length} frames in tab ${tabId}`);
-                    // FIX 172: Only process if we found frames
-                    frames.forEach(frame => {
-                        // FIX: Media Kill Switch (Universal)
-                        // We ALWAYS send a media action to EVERY frame in the tab, 
-                        // bypassing hostname matching. This ensures cross-origin 
-                        // iframes (like YouTube) pause their media.
-                        // FIX 177: Toasts should not pause media.
-                        if (reminderStyle !== 'toast') {
-                            chrome.tabs.sendMessage(tabId, {
-                                action: 'tabMediaAction',
-                                type: show ? 'pause' : 'resume'
-                            }, { frameId: frame.frameId }).catch(() => {});
-                        }
-
-                        // Skip the sender frame (frameId 0 on the current tab)
-                        if (isCurrentTab && frame.frameId === 0) return;
-                        
-                        // Check if frame URL matches the hostname for overlay display
-                        try {
-                            const frameUrl = new URL(frame.url);
-                            const frameHost = cleanHost(frameUrl.hostname);
-                            
-                            if (isGlobal || frameHost === cleanedHostname) {
-                                if (show) {
-                                    // FIX 171: Send different action based on reminderStyle
-                                    if (reminderStyle === 'toast') {
-                                        chrome.tabs.sendMessage(tabId, {
-                                            action: 'forceReminderToast',
-                                            hostname: isGlobal ? 'global' : cleanedHostname,
-                                            value: value,
-                                            type: type
-                                        }, { frameId: frame.frameId }).catch(() => {});
-                                    } else {
-                                        chrome.tabs.sendMessage(tabId, {
-                                            action: 'forceReminderOverlay',
-                                            hostname: isGlobal ? 'global' : cleanedHostname,
-                                            value: value,
-                                            type: type
-                                        }, { frameId: frame.frameId }).catch(() => {});
-                                    }
-                                } else {
-                                    chrome.tabs.sendMessage(tabId, {
-                                        action: 'dismissReminderOverlay',
-                                        hostname: isGlobal ? 'global' : cleanedHostname
-                                    }, { frameId: frame.frameId }).catch(() => {});
-                                }
-                            }
-                        } catch (e) {
-                            // Skip invalid URLs
-                        }
-                    });
-                });
-            }
-        };
-
-        // 1. Broadcast to ALL frames in the current tab (for embedded iframes)
-        if (currentTabId) {
-            broadcastToAllFrames(currentTabId, true);
-        }
-
-        // 2. Query ALL tabs and check all frames for matching hostname
-        chrome.tabs.query({}, (tabs) => {
-            if (chrome.runtime.lastError || !tabs) return;
-            
-            for (const tab of tabs) {
-                if (tab.id && tab.id !== currentTabId) {
-                    broadcastToAllFrames(tab.id, false);
-                }
-            }
-        });
-        
+        broadcastReminderStateCentral(request, sender.tab?.id);
         sendResponse({ success: true });
         return true;
     }
@@ -1206,25 +1473,51 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // FIX 171: Include reminderStyle for toast persistence
     if (request.action === 'getReminderState') {
         const hostname = cleanHost(request.hostname);
-        const siteState = g_activeReminders.get(hostname);
         const globalState = g_activeGlobalReminder;
+        
+        // Priority 1: Global Reminder (Active Browser-wide)
+        if (globalState && globalState.active) {
+            return sendResponse({ 
+                active: true, 
+                value: globalState.value, 
+                type: globalState.type, 
+                isGlobal: true, 
+                reminderStyle: globalState.reminderStyle 
+            });
+        }
 
-        // Global reminder (if active) takes precedence for reporting
-        if (globalState) {
-            sendResponse({ active: true, value: globalState.value, type: globalState.type, isGlobal: true, reminderStyle: globalState.reminderStyle });
-        } else if (siteState) {
-            sendResponse({ 
-                active: siteState.active || false, 
-                value: siteState.value, 
-                type: siteState.type, 
+        // Priority 2: Site Activity (Time) Reminder
+        const timeKey = `${hostname}_time`;
+        const timeState = g_activeReminders.get(timeKey);
+        if (timeState && timeState.active) {
+            return sendResponse({ 
+                active: true, 
+                value: timeState.value, 
+                type: 'time', 
                 isGlobal: false, 
                 hostname: hostname, 
-                reminderStyle: siteState.reminderStyle,
-                lastDismissedTime: siteState.lastDismissedTime
+                reminderStyle: timeState.reminderStyle,
+                lastDismissedTime: timeState.lastDismissedTime
             });
-        } else {
-            sendResponse({ active: false });
         }
+
+        // Priority 3: Launch Limit Reminder
+        const launchKey = `${hostname}_launch`;
+        const launchState = g_activeReminders.get(launchKey);
+        if (launchState && launchState.active) {
+            return sendResponse({ 
+                active: true, 
+                value: launchState.value, 
+                type: 'launch', 
+                isGlobal: false, 
+                hostname: hostname, 
+                reminderStyle: launchState.reminderStyle,
+                lastDismissedTime: launchState.lastDismissedTime
+            });
+        }
+
+        // No active reminder
+        sendResponse({ active: false });
         return true;
     }
 

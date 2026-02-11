@@ -131,7 +131,6 @@ const MediaController = {
         this.findMediaDeep().forEach(el => this.enforceElement(el));
     },
     startEnforcement(force = false) {
-        this.isActive = true; // Enable Flag
         if (this.interval) clearInterval(this.interval);
         if (this.observer) this.observer.disconnect();
 
@@ -141,6 +140,8 @@ const MediaController = {
         const isBlacklisted = vault && vault.isBlacklisted();
 
         if (!force && (isWhitelisted || (!isBlacklisted && !isInterventionActive))) return;
+
+        this.isActive = true; // Enable Flag only if we pass the guard
 
         // 1. Initial Sweep
         this.pauseAll();
@@ -730,6 +731,14 @@ class CureVault {
 
         // FIX 187: Consolidated reminder handler
         if (request.action === 'forceReminderOverlay' || request.action === 'forceReminderToast') {
+            // FIX: Guard against stale broadcasts arriving after a settings change.
+            // When settings change, the old repeating reminder's 'show:true' broadcast can
+            // arrive AFTER the 'dismiss' broadcast due to async chrome.tabs.query racing.
+            if (this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000)) {
+                console.debug('[Cure] Ignoring stale reminder broadcast during settings transition.');
+                return;
+            }
+
             const isGlobal = request.hostname === 'global';
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
                 const rStyle = request.reminderStyle || (request.action === 'forceReminderToast' ? 'toast' : 'overlay');
@@ -755,7 +764,7 @@ class CureVault {
         // FIX 128/156: Cross-Tab Reminder Dismissal
         // FIX 129: Extended to handle iframes properly
         if (request.action === 'dismissReminderOverlay') {
-            const isGlobal = request.hostname === 'global';
+            const isGlobal = request.hostname === 'global' || request.hostname === 'all';
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
                 sessionStorage.removeItem('cure_reminder_active');
                 
@@ -820,6 +829,18 @@ class CureVault {
                 sessionStorage.removeItem('cure_remind_interval_shown');
                 this._lastReminderThreshold = Math.floor(this.activeSeconds / 60);
             }
+
+            // FIX: Arm settings-change guard to block stale reminder broadcasts.
+            // The background sends 'dismiss' then sets new baselines, but old 'show:true'
+            // broadcasts from the previous config can arrive AFTER the dismiss due to
+            // async chrome.tabs.query racing. This guard blocks them for 2 seconds.
+            this._settingsChangedAt = Date.now();
+
+            // FIX: Immediately dismiss any active reminder overlay on settings change.
+            // This is a synchronous cleanup — don't wait for the background's 'dismiss' broadcast.
+            sessionStorage.removeItem('cure_reminder_active');
+            this.removeOverlay();
+            document.body.style.overflow = '';
 
             const oldWhitelisted = this.isWhitelisted();
             
@@ -1247,178 +1268,20 @@ class CureVault {
         // It prevented subsequent intervals (e.g. 2 min) from triggering if 1 min was dismissed late.
         // We rely on 'crossed' logic (which only fires once per interval) and 'heartbeat' guards to prevent spam.
 
-        if (this.settings.reminderIntervalEnabled !== false) {
-            let rInt = (this.settings.reminderInterval || 15) * 60;
-            if (rInt < 60) rInt = 60;
+        // Site Activity Reminders are now managed centrally by background.js broadcasts.
+        // content.js only acts on 'forceReminderOverlay' / 'forceReminderToast' messages.
 
-            const mins = Math.floor(this.activeSeconds / 60);
-            const intervalMins = rInt / 60;
-            const currentThreshold = Math.floor(mins / intervalMins) * intervalMins;
-
-            // FIX 188/190: Use > instead of !== for threshold crossed. 
-            // This allows us to catch up if we miss a second or desync.
-            const thresholdCrossed = currentThreshold > 0 && currentThreshold > this._lastReminderThreshold;
-
-            if (this.mode === 'up' && this.activeSeconds > 0) {
-                const rStyle = this.settings.reminderStyle || 'overlay';
-
-                // 1. Regular threshold check (15m, 30m, etc.)
-                if (thresholdCrossed) {
-                    const rType = this.settings.reminderIntervalType || 'repeating';
-                    const hasShown = sessionStorage.getItem('cure_remind_interval_shown');
-                    
-                    if (rType === 'repeating' || !hasShown) {
-                        this._lastReminderThreshold = currentThreshold;
-                        this._lastHeartbeatMinute = currentThreshold; // Also sync heartbeat
-
-                        // FIX 193: Consolidate Local Trigger and Global Broadcast.
-                        // We NO LONGER restrict iframes to 'only broadcast'.
-                        // Both iframes and main tabs should render locally for instant feedback,
-                        // and both should broadcast to keep other tabs/frames in sync.
-                        if (rStyle === 'overlay') {
-                            this.renderReminderOverlay(currentThreshold, 'time');
-                            MediaController.pauseAll();
-                        } else {
-                            // Show LOCALLY first for instant feedback
-                            const site = this.getSiteName();
-                            this.showToast(`⏰ ${site} Activity: ${currentThreshold}m spent`, 'reminder');
-
-                            // Broadcast to other tabs
-                            this.safeSendMessage({
-                                action: 'broadcastReminderState',
-                                hostname: window.location.hostname,
-                                show: true,
-                                value: currentThreshold,
-                                type: 'time',
-                                reminderStyle: 'toast'
-                            });
-                        }
-                        if (rType === 'once') sessionStorage.setItem('cure_remind_interval_shown', '1');
-                    }
-                }
-
-                // FIX 175/185/189: Independent Heartbeat for Toast Updates
-                if (rStyle === 'toast' && Math.floor(this.activeSeconds) % 60 === 0 && this.activeSeconds >= 60) {
-                     const hMins = Math.floor(this.activeSeconds / 60);
-                     if (this._lastHeartbeatMinute !== hMins) {
-                         // Heartbeats ONLY update visible toasts.
-                         const hasToast = !!this.ensureShadow().getElementById('cure-popout-notification');
-                         
-                         if (hasToast && !this.isIframe) { // Only update locally if not in iframe
-                             this._lastHeartbeatMinute = hMins;
-                             const site = this.getSiteName();
-                             this.showToast(`⏰ ${site} Activity: ${hMins}m spent`, 'reminder');
-
-                             // Broadcast update to other tabs
-                             if (thresholdCrossed === false) {
-                                this.safeSendMessage({
-                                    action: 'broadcastReminderState',
-                                    hostname: window.location.hostname,
-                                    show: true,
-                                    value: hMins,
-                                    type: 'time',
-                                    reminderStyle: 'toast'
-                                });
-                             }
-                         }
-                     }
-                }
-            }
-        }
-
-        // 2. Global Reminders (Only for main tab)
-        // FIX 154: Increase frequency to 1s for instant feedback on visits
+        // 2. Global Reminders (Now primarily handled by background broadcasts)
+        // We still keep a legacy check here for instant local feedback if tracking is fast,
+        // but it will be deduplicated by the background's authority.
+        // 2. Global & Launch Reminders (Handled centrally by background evaluation)
         if (!this.isIframe && (force || deltaSecs >= 1)) {
             const launchWindow = (this.settings.reminderTriggers?.launchLimit?.windowSeconds) || 3600;
             this.safeSendMessage({ 
                 action: 'trackLaunch', 
                 hostname: window.location.hostname, 
                 windowSeconds: launchWindow,
-                isNewVisit: false // FIX 158: Periodic checks are NOT new visits
-            }, (launchRes) => {
-                if (!launchRes) return;
-                const rTriggers = this.settings.reminderTriggers || {};
-                const rStyle = this.settings.reminderStyle || 'overlay';
-                
-                // 1. Daily Screen Time (Browser Limit)
-                let globalTriggered = false;
-                if (rTriggers.browserLimit?.enabled && launchRes.browserSeconds) {
-                    const limitSecs = rTriggers.browserLimit.value * 60;
-                    const rType = this.settings.reminderBrowserType || 'once';
-                    let shouldTrigger = false;
-                    const minsSpent = Math.floor(launchRes.browserSeconds / 60);
-                    const globalDismissed = launchRes.globalDismissals?.[`cure_global_remind_dismissed_browser_${minsSpent}`];
-
-                    if (!globalDismissed) {
-                        const greedy = force && launchRes.browserSeconds >= limitSecs;
-                        if (rType === 'once') {
-                            const hasShown = sessionStorage.getItem('cure_remind_browser_shown');
-                            if ((launchRes.browserSeconds >= limitSecs && !hasShown) || (greedy && !hasShown)) {
-                                shouldTrigger = true;
-                                sessionStorage.setItem('cure_remind_browser_shown', '1');
-                            }
-                        } else {
-                            // Repeating: Every X minutes
-                            const minsSpent = Math.floor(launchRes.browserSeconds / 60);
-                            if (minsSpent >= rTriggers.browserLimit.value && minsSpent % rTriggers.browserLimit.value === 0) {
-                                const lastRepeat = sessionStorage.getItem('cure_remind_browser_last');
-                                if (lastRepeat !== minsSpent.toString()) {
-                                    shouldTrigger = true;
-                                    sessionStorage.setItem('cure_remind_browser_last', minsSpent.toString());
-                                }
-                            }
-                        }
-                    }
-
-                    if (shouldTrigger) {
-                        if (rStyle === 'overlay') {
-                            this.renderReminderOverlay(minsSpent, 'browser');
-                            MediaController.pauseAll();
-                        } else if (!force) {
-                            this.showToast(`⌛ Browser Screen Time: ${minsSpent}m spent`, 'reminder');
-                        }
-                        globalTriggered = true;
-                    }
-                }
-
-                // 2. Launch Count Reminder (Visit Limit)
-                if (!globalTriggered && rTriggers.launchLimit?.enabled && launchRes.currentLaunches >= rTriggers.launchLimit.value) {
-                    // FIX: Recently Dismissed Guard (Prevents race-triggered double alerts)
-                    if (this.recentlyDismissedLaunch && Date.now() - this.recentlyDismissedLaunch < 2000) {
-                        return; 
-                    }
-                    const limit = rTriggers.launchLimit.value;
-                    const rType = rTriggers.launchLimit.type || 'repeating';
-                    let shouldTrigger = false;
-
-                    if (rType === 'once') {
-                        const hasShown = sessionStorage.getItem(`cure_remind_launch_shown_${limit}`);
-                        if (!hasShown) {
-                            shouldTrigger = true;
-                            sessionStorage.setItem(`cure_remind_launch_shown_${limit}`, '1');
-                        }
-                    } else {
-                        // Repeating: Show every 'limit' visits (5, 10, 15...)
-                        const crossed = Math.floor(launchRes.currentLaunches % limit) === 0;
-                        if (crossed) {
-                            const lastRepeat = sessionStorage.getItem(`cure_remind_launch_last_${limit}`);
-                            const currentBucket = Math.floor(launchRes.currentLaunches / limit);
-                            if (lastRepeat !== currentBucket.toString()) {
-                                shouldTrigger = true;
-                                sessionStorage.setItem(`cure_remind_launch_last_${limit}`, currentBucket.toString());
-                            }
-                        }
-                    }
-
-                    if (shouldTrigger) {
-                        if (rStyle === 'overlay') {
-                            this.renderReminderOverlay(launchRes.currentLaunches, 'launch');
-                            MediaController.pauseAll();
-                        } else if (!force) {
-                            this.showToast(`🚀 Visit Limit: ${launchRes.currentLaunches} launches`, 'reminder');
-                        }
-                    }
-                }
+                isNewVisit: false
             });
         }
     }
@@ -1595,64 +1458,11 @@ class CureVault {
                 const browserSecs = response?.browserSeconds || 0;
 
                 if (masterRemindersOn) {
-                    // 7.1 Site Activity Reminder (Handled in stateMonitor/checkReminders, 
-                    // but we ensure ground truth sync here for browser/launch)
-
-                    // 7.2 Screen Time Reminder (Browser Limit)
-                    if (rTriggers.browserLimit?.enabled && browserSecs > 0) {
-                        const limitSecs = rTriggers.browserLimit.value * 60;
-                        const rType = this.settings.reminderBrowserType || 'repeating';
-                        let shouldTrigger = false;
-
-                        if (rType === 'once') {
-                            if (browserSecs >= limitSecs && !sessionStorage.getItem('cure_remind_browser_shown')) {
-                                shouldTrigger = true;
-                            }
-                        } else if (browserSecs >= limitSecs && Math.floor(browserSecs / 60) % rTriggers.browserLimit.value === 0) {
-                            // Only trigger once per minute bucket
-                            const minsSpent = Math.floor(browserSecs / 60);
-                            const lastBucket = sessionStorage.getItem('cure_remind_browser_last_eval');
-                            if (lastBucket !== minsSpent.toString()) {
-                                shouldTrigger = true;
-                                sessionStorage.setItem('cure_remind_browser_last_eval', minsSpent.toString());
-                            }
-                        }
-
-                        if (shouldTrigger) {
-                            const minsSpent = Math.floor(browserSecs / 60);
-                            const dismissKey = `cure_global_remind_dismissed_browser_${minsSpent}`;
-                            if (!response?.globalDismissals?.[dismissKey]) {
-                                this.renderReminderOverlay(minsSpent, 'browser');
-                                return resolve();
-                            }
-                        }
-                    }
-
-                    // 7.3 Launch Count Reminder (Visit Limit)
-                    if (rTriggers.launchLimit?.enabled) {
-                        const limit = rTriggers.launchLimit.value;
-                        const rType = rTriggers.launchLimit.type || 'repeating';
-                        let shouldTrigger = false;
-
-                        if (rType === 'once') {
-                            if (currentLaunches >= limit && !sessionStorage.getItem(`cure_remind_launch_shown_${limit}`)) {
-                                shouldTrigger = true;
-                            }
-                        } else if (currentLaunches >= limit && currentLaunches % limit === 0) {
-                            shouldTrigger = true;
-                        }
-
-                        if (shouldTrigger) {
-                            const dismissKey = `cure_global_remind_dismissed_launch_${window.location.hostname}_${currentLaunches}`;
-                            if (!response?.globalDismissals?.[dismissKey]) {
-                                this.renderReminderOverlay(currentLaunches, 'launch');
-                                return resolve();
-                            }
-                        }
-                    }
+                    // Site Activity, Browser, and Launch Reminders are now handled EXCLUSIVELY by background.js.
+                    // content.js only acts as a UI layer for broadcasts and syncs evaluation state to prevent flickering.
                 }
 
-                // 8. Check Pause Triggers
+                // 8. Check Pause Triggers (Still local for immediate feedback)
                 const pauseTriggers = this.settings.pauseTriggers || {};
                 const canShowPause = !this.isWhitelisted() || !!this.settings.pauseWhitelist;
 
@@ -1967,6 +1777,13 @@ class CureVault {
 
     // --- STATE 1: BREATHING ROOM ---
     stateBreathingRoom(reason = 'standard', forced = false) {
+        // FIX: Guard against stale breathing room triggers during settings transition.
+        // If the user just changed settings (e.g. disabled breathing room), block re-entry.
+        if (this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000) && !forced) {
+            console.debug('[Cure] Ignoring stale breathing room trigger during settings transition.');
+            return;
+        }
+
         let message = "Take a breath.";
         if (reason === 'launch') message = `Pause: You've visited ${this.settings.pauseTriggers?.launchLimit?.value || 5} times so far.`;
         if (reason === 'browser') message = `Pause: You've been browsing for over ${this.settings.pauseTriggers?.browserLimit?.value || 120} mins today.`;
@@ -2253,7 +2070,9 @@ class CureVault {
                         this._lastReminderThreshold = res.reminderValue;
                         this._lastHeartbeatMinute = res.reminderValue;
                         const isActiveLocally = sessionStorage.getItem('cure_reminder_active') === '1';
-                        if (res.reminderActive && !isActiveLocally) {
+                        // FIX: Respect settings-change guard here too
+                        const inSettingsTransition = this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000);
+                        if (res.reminderActive && !isActiveLocally && !inSettingsTransition) {
                             this.renderReminderOverlay(res.reminderValue, 'time', true);
                         } else if (!res.reminderActive && isActiveLocally) {
                             this.removeOverlay();
@@ -2554,6 +2373,13 @@ class CureVault {
 
     stateHardLock(reason = 'limit', forced = false, phase = 'decision') {
         if (!this.isContextValid()) return;
+        
+        // FIX: Guard against stale lock triggers during settings transition.
+        // If the user just changed settings (e.g. disabled strict lock), block re-entry.
+        if (this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000) && !forced) {
+            console.debug('[Cure] Ignoring stale lock trigger during settings transition.');
+            return;
+        }
         
         // FIX: Idempotency Guard. 
         // Prevents the "heartbeat" gong sound and screen flicker every 1 second.
@@ -3353,12 +3179,8 @@ class CureVault {
         }
 
         if (this.isIframe) {
-            // FIX 166: Exclude browser-wide screen time reminders from iframes
-            // These alerts are top-level only and don't need to clutter small frames.
-            if (type === 'browser') return;
-
-            // FIX 141/166: Rich Iframe UI
-            // Pass full metadata so iframe can render a matching UI (e.g. Frequent Visit Alert)
+            // FIX 166/171: Rich Iframe UI for ALL reminder types including Global ones
+            // Pass full metadata so iframe can render a matching UI
             this.renderIframeBlocked(this.ensureShadow(), 'reminder', {
                 emoji, title, timeLabel, timeUnit, subtitle, continueText, value, reminderType: type 
             });
