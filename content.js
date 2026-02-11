@@ -755,7 +755,7 @@ class CureVault {
                         this._lastHeartbeatMinute = request.value;
                     }
 
-                    this.renderReminderOverlay(request.value, request.type, true);
+                    this.renderReminderOverlay(request.value, request.type, true, rStyle);
                 }
             }
             return;
@@ -3086,7 +3086,7 @@ class CureVault {
         }
     }
 
-    renderReminderOverlay(value, type = 'time', forced = false) {
+    renderReminderOverlay(value, type = 'time', forced = false, styleOverride = null) {
         // NUCLEAR SAFEGUARD: If we ever try to show a "0 min" site reminder, self-destruct.
         if (type === 'time' && value <= 0 && !forced) {
             console.log('[Cure] Suppressing 0-min ghost reminder overlay.');
@@ -3124,7 +3124,7 @@ class CureVault {
             subtitle = `You've spent ${value} minutes on ${site}.`;
         }
 
-        const rStyle = this.settings.reminderStyle || 'overlay';
+        const rStyle = styleOverride || this.settings.reminderStyle || 'overlay';
         
         if (rStyle === 'overlay' && this.timerInterval) {
             clearInterval(this.timerInterval);
