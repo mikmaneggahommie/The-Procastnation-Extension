@@ -42,6 +42,8 @@ const loadReminderSnapshots = () => {
 };
 
 // Helper: Standardize hostname (strip www.)
+const cleanHost = (host) => host ? host.replace(/^www\./, '') : '';
+
 const ensureRestored = () => {
     if (g_reminderStateRestored) return Promise.resolve();
     return new Promise(resolve => {
@@ -217,6 +219,7 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
             const currentOffset = Math.floor(effectiveSecs / limitGlobalSecs) * limitGlobalSecs;
             if (currentOffset > 0 && currentOffset > g_activeGlobalReminder.lastTriggeredOffset) {
                 g_activeGlobalReminder.lastTriggeredOffset = currentOffset;
+                g_activeGlobalReminder.active = true; // Ensure re-activated on new bucket
                 broadcastReminderStateCentral({
                     hostname: 'global',
                     show: true,
@@ -393,7 +396,10 @@ function broadcastReminderStateCentral(payload, excludeTabId = null) {
     // 3. Target all tabs (including sender to reach its iframes)
     chrome.tabs.query({}, (tabs) => {
         tabs.forEach(tab => {
-            if (tab.id) {
+            // FIX: Exclude the initiator tab to prevent redundant logic cycles 
+            // BUT: If it's an overlay dismissal, we might WANT to send it to same-tab iframes?
+            // Actually, safeSendMessage in initiator handles local update.
+            if (tab.id && tab.id !== excludeTabId) {
                 broadcastToTab(tab.id);
             }
         });
@@ -748,8 +754,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             let finalSettings = currentSettings || DEFAULT_SETTINGS;
             if (hostname) {
                 // AUTHORITATIVE SNAPSHOT: If locked, site ONLY sees the frozen rules.
-                if (g_lockSnapshots[cleanHost]) {
-                    finalSettings = g_lockSnapshots[cleanHost];
+                if (g_lockSnapshots[hostname]) {
+                    finalSettings = g_lockSnapshots[hostname];
                 }
             }
             sendResponse({ settings: finalSettings });

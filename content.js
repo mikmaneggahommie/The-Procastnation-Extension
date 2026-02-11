@@ -1301,6 +1301,13 @@ class CureVault {
             return this._pEvaluation;
         }
 
+        // FIX: Null Safety. If background script is crashed or settings didn't load,
+        // we cannot evaluate triggers. Silently fail instead of crashing.
+        if (!this.settings) {
+            console.warn('[Cure] Settings not available for evaluation. Background may be offline.');
+            return Promise.resolve();
+        }
+
         const whitelistReminders = !!this.settings.reminderWhitelist;
         const whitelistPause = !!this.settings.pauseWhitelist;
 
@@ -2446,7 +2453,7 @@ class CureVault {
     // 3. Animation keyframes must be injected into Shadow Root.
     // =========================================================================
     /* SURGICAL FEATURE: TOAST_UI (The Global Notification System) */
-    showToast(msg, type = 'info') {
+    showToast(msg, type = 'info', options = {}) {
         // FIX 115: Removed isIframe check. 
         const root = this.ensureShadow();
 
@@ -2554,11 +2561,14 @@ class CureVault {
                 // Set heartbeat to current minute to prevent instant re-trigger
                 this._lastHeartbeatMinute = Math.floor(this.activeSeconds / 60);
 
+                const rType = options.reminderType || 'time';
+                const isGlobal = (rType === 'browser');
+
                 this.safeSendMessage({
                     action: 'broadcastReminderState',
-                    hostname: window.location.hostname,
+                    hostname: isGlobal ? 'global' : window.location.hostname,
                     show: false,
-                    type: 'time',
+                    type: rType,
                     reminderStyle: 'toast',
                     initiatorInstanceId: this.instanceId
                 });
@@ -3169,7 +3179,7 @@ class CureVault {
             } else {
                 toastMsg = `⏰ ${this.getSiteName()} Activity: ${value}m spent`;
             }
-            this.showToast(toastMsg, 'reminder');
+            this.showToast(toastMsg, 'reminder', { reminderType: type });
             
             // Broadcast to background so other tabs/iframes can restore this toast
             if (!forced) {
