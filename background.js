@@ -21,7 +21,8 @@ const cleanHost = (host) => host ? host.replace(/^www\./, '') : '';
  * Centrally evaluates reminders based on current site and browser usage.
  * Broadcasts to all tabs if a threshold is crossed.
  */
-function evaluateReminders(stats, hostname, sittingSeconds, now) {
+
+function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage') {
     if (!g_settingsCache || g_settingsCache.masterReminders === false) return;
 
     // FIX: Cooldown guard — skip evaluation for 1500ms after a settings change.
@@ -45,7 +46,10 @@ function evaluateReminders(stats, hostname, sittingSeconds, now) {
         const reminderKey = `${hostname}_time`;
         
         let state = g_activeReminders.get(reminderKey);
-        if (!state || state.configHash !== configHash) {
+
+        // FIX 196: Only 'trackUsage' is authoritative for Time Creation.
+        // 'trackLaunch' might have stale/zero time data if called before stats sync.
+        if ((!state || state.configHash !== configHash) && source === 'usage') {
             const wasActive = state && state.active;
             state = {
                 configHash,
@@ -63,6 +67,9 @@ function evaluateReminders(stats, hostname, sittingSeconds, now) {
                 broadcastReminderStateCentral({ hostname: hostname, show: false, type: 'time' });
             }
         }
+        
+        // If state doesn't exist yet (and we represent 'launch' source), skip time evaluation
+        if (!state) return;
 
         const effectiveSecs = sittingSeconds - state.baselineSecs;
         const currentMins = Math.floor(sittingSeconds / 60);
@@ -835,7 +842,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         .filter(c => c.ts >= siteStats.activeSession.startTime)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
                 }
-                evaluateReminders(stats, hostname, sittingSeconds, now);
+                evaluateReminders(stats, hostname, sittingSeconds, now, 'launch');
 
                 // 3. Info for UI (Calculate based on effective window)
                 const history = (siteStats.launches || []).filter(ts => now - ts < windowMs);
@@ -1023,7 +1030,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
 
                 // --- REMINDER EVALUATION (Centralized) ---
-                evaluateReminders(stats, hostname, sittingSeconds, now);
+                evaluateReminders(stats, hostname, sittingSeconds, now, 'usage');
 
                 saveStats();
                 
