@@ -364,8 +364,19 @@ function formatWindow(seconds) {
 }
 
 function showValidationWarning(message, isError = false) {
-    const banner = document.getElementById('validation-warning');
-    const text = document.getElementById('validation-warning-text');
+    // Dynamically find the banner based on which view is currently active
+    const activeView = document.querySelector('.view.active');
+    if (!activeView) return;
+
+    let banner = activeView.querySelector('.validation-warning');
+    let text = activeView.querySelector('.validation-warning-message');
+    
+    // Fallback to the global one if view-specific is missing
+    if (!banner) {
+        banner = document.getElementById('validation-warning');
+        text = document.getElementById('validation-warning-text');
+    }
+
     const title = banner?.querySelector('.validation-warning-title');
     const icon = banner?.querySelector('.validation-warning-icon');
 
@@ -373,7 +384,6 @@ function showValidationWarning(message, isError = false) {
         text.innerHTML = message;
         banner.style.display = 'block';
 
-        // Explicitly check for error keywords in message OR isError flag
         const isActuallyError = isError || message.includes('Invalid') || message.includes('Cannot') || message.includes('Error');
 
         if (isActuallyError) {
@@ -389,8 +399,11 @@ function showValidationWarning(message, isError = false) {
 }
 
 function hideValidationWarning() {
-    const banner = document.getElementById('validation-warning');
-    if (banner) banner.style.display = 'none';
+    const activeView = document.querySelector('.view.active');
+    if (activeView) {
+        const banner = activeView.querySelector('.validation-warning') || document.getElementById('validation-warning');
+        if (banner) banner.style.display = 'none';
+    }
 }
 
 
@@ -2260,15 +2273,28 @@ function setupInputValidation() {
             if (isNaN(val)) {
                 val = config.min; 
             } else {
+                // UNIVERSAL LOGICAL CAPS
+                let max = config.max;
+
+                // Dynamic Unit-Aware Caps
+                const unitElId = config.id.includes('hardlock') ? 'hardlock-unit' : 
+                               config.id.includes('reminder-input') ? 'reminder-unit' :
+                               config.id.includes('screen-time') ? 'reminder-trigger-browser-unit' : null;
+                               
+                if (unitElId) {
+                    const unit = document.getElementById(unitElId)?.value;
+                    if (unit === 'hr') max = 24;
+                    if (unit === 'day') max = 1;
+                }
+
                 // Clamp functionality
                 if (val < config.min) val = config.min;
-                if (config.max && val > config.max) val = config.max;
+                if (max && val > max) val = max;
             }
 
             // Update visible value if changed
             if (input.value !== String(val)) {
                 input.value = val;
-                // Trigger change to ensure settings save
                 input.dispatchEvent(new Event('change'));
             }
         });
