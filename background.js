@@ -857,7 +857,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         siteStats.lastActiveAt = now;
                     } else {
                         siteStats.activeSession = null;
-                        siteStats.cumulativeSeconds = 0; // Clear snapshot on new session
+                        // FIX: Snapshots now persist for the FULL DAY. 
+                        // Do not clear siteStats.cumulativeSeconds here; it is our safety net for "Per Day" robustness.
                     }
                 }
 
@@ -936,16 +937,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     .filter(c => c.ts >= siteStats.activeSession.startTime - 1000) // FIX: Buffer for timestamp skew
                     .reduce((acc, c) => acc + (c.dur || 0), 0);
                 
-                // FIX: Use Persistent Snapshot if Resumed
-                if (sessionResumed) {
-                     sittingSeconds = Math.max(sittingSeconds, siteStats.cumulativeSeconds || 0);
-                }
+                // FIX: Use Persistent Snapshot as a universal floor during launch.
+                // This ensures "Per Day" reminders never lose time due to data lags, 
+                // and "Per-Visit" correctly establishes a baseline against actual usage.
+                sittingSeconds = Math.max(sittingSeconds, siteStats.cumulativeSeconds || 0);
             }
 
-            // FIX: Smart Reset Suppression
-            // With the snapshot logic, sittingSeconds should be accurate (e.g. 15s).
-            // But if snapshot was missing too, we still guard against 0-reset.
-            const shouldReset = request.isNewVisit && !(sessionResumed && sittingSeconds < 5);
+            // FIX: Robust Reset Logic
+            // A reset should occur if explicitly requested (isNewVisit) OR if the session expired (!sessionResumed).
+            const shouldReset = request.isNewVisit || !sessionResumed;
 
             evaluateReminders(stats, hostname, sittingSeconds, now, 'launch', shouldReset);
                 
