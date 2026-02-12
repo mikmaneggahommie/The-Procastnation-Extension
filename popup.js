@@ -2000,10 +2000,6 @@ function updateUIState() {
     const remindSaveBtn = document.getElementById('save-reminders-btn');
     const pauseSaveBtn = document.getElementById('save-pause-btn');
 
-    const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked;
-    const isRemindMasterOn = document.getElementById('inner-master-reminders')?.checked;
-    const isPauseMasterOn = document.getElementById('inner-master-pause')?.checked;
-
     // SILENT PASSWORD CHECK: Disable Save if password is ON but incomplete/editing
     const passOn = document.getElementById('proto-password-enable')?.checked;
     const isPasswordEditing = document.getElementById('password-setup-state')?.style.display !== 'none';
@@ -2013,7 +2009,7 @@ function updateUIState() {
     const passIncomplete = passOn && (isPasswordEditing || !hasPassword);
 
     // Helper to apply visual state to save buttons based on validation
-    const applySaveBtnState = (btn, isValid, errorMsg) => {
+    const applySaveBtnState = (btn, isValid) => {
         if (!btn) return;
         if (!isValid) {
             btn.disabled = true;
@@ -2021,39 +2017,57 @@ function updateUIState() {
             btn.style.filter = 'grayscale(1)';
             btn.style.cursor = 'not-allowed';
             btn.style.pointerEvents = 'none';
-            if (errorMsg) showValidationWarning(errorMsg, true);
         } else {
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.style.filter = 'none';
             btn.style.cursor = 'pointer';
             btn.style.pointerEvents = 'auto';
-            hideValidationWarning();
         }
     };
 
-    // Evaluate Strict Lock Save Button
+    // 5. Evaluate and apply state for each view's Save button
+    // Strict Lock
     const hlError = v.errors.find(e => e.includes('Strict Lock'));
-    if (hlSaveBtn && isHLMasterOn) {
-        applySaveBtnState(hlSaveBtn, !hlError && !passIncomplete, hlError || (passIncomplete ? "Complete password setup" : null));
-    } else if (hlSaveBtn) {
-        applySaveBtnState(hlSaveBtn, true);
+    const isHLMasterOn = document.getElementById('master-hardlock-enable')?.checked || document.getElementById('inner-master-hardlock')?.checked;
+    if (hlSaveBtn) {
+        const isValid = !hlError && !passIncomplete;
+        applySaveBtnState(hlSaveBtn, isHLMasterOn ? isValid : true);
     }
 
-    // Evaluate Reminders Save Button
+    // Reminders
     const remindError = v.errors.find(e => e.includes('Reminders'));
-    if (remindSaveBtn && isRemindMasterOn) {
-        applySaveBtnState(remindSaveBtn, !remindError, remindError);
-    } else if (remindSaveBtn) {
-        applySaveBtnState(remindSaveBtn, true);
+    const isRemindMasterOn = document.getElementById('master-reminders-enable')?.checked || document.getElementById('inner-master-reminders')?.checked;
+    if (remindSaveBtn) {
+        const isValid = !remindError;
+        applySaveBtnState(remindSaveBtn, isRemindMasterOn ? isValid : true);
     }
 
-    // Evaluate Pause Save Button
+    // Pause
     const pauseError = v.errors.find(e => e.includes('Pause'));
-    if (pauseSaveBtn && isPauseMasterOn) {
-        applySaveBtnState(pauseSaveBtn, !pauseError, pauseError);
-    } else if (pauseSaveBtn) {
-        applySaveBtnState(pauseSaveBtn, true);
+    const isPauseMasterOn = document.getElementById('master-pause-enable')?.checked || document.getElementById('inner-master-pause')?.checked;
+    if (pauseSaveBtn) {
+        const isValid = !pauseError;
+        applySaveBtnState(pauseSaveBtn, isPauseMasterOn ? isValid : true);
+    }
+
+    // 6. Final Step: Show relevant error for ACTIVE view ONLY
+    // This prevents one view's "valid" state from hiding another view's "error"
+    const activeViewId = document.querySelector('.view.active')?.id;
+    let activeError = null;
+
+    if (activeViewId === 'hardlock-config-view' && isHLMasterOn) {
+        activeError = hlError || (passIncomplete ? "Complete password setup" : null);
+    } else if (activeViewId === 'reminders-view' && isRemindMasterOn) {
+        activeError = remindError;
+    } else if (activeViewId === 'pause-view' && isPauseMasterOn) {
+        activeError = pauseError;
+    }
+
+    if (activeError) {
+        showValidationWarning(activeError, true);
+    } else {
+        hideValidationWarning();
     }
 }
 
