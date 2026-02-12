@@ -277,6 +277,7 @@ class CureVault {
         this.shadowHost = null;
         this.shadowRoot = null;
         this._resetToastPending = false; 
+        this._launchCounted = false; // FIX: In-memory launch tracking
         this._toastDebounce = false;
         this._lastDecisionKey = null; // Stability guard for UI re-renders
         this.lastRenderedReason = null; // Fix: Prevent rapid-fire re-rendering
@@ -323,7 +324,7 @@ class CureVault {
 
         // FIX: Universal SPA Navigation Support
         const handleNav = () => {
-            sessionStorage.removeItem('cure_launch_counted'); // Allow new "visit" on SPA nav
+            this._launchCounted = false; // Allow new "visit" on SPA nav
             this.evaluateAllTriggers().then(() => this.forceRefreshUI());
         };
         window.addEventListener('popstate', handleNav);
@@ -1318,10 +1319,12 @@ class CureVault {
 
         // --- ATOMIC VISIT DETECTION ---
         // We detect "New Visit" synchronously at the START of evaluation.
-        // This prevents two rapid calls (e.g. init + focus) from both seeing "no flag".
-        const isNewVisit = !this.isIframe && !sessionStorage.getItem('cure_launch_counted');
+        // FIX: Use in-memory flag instead of sessionStorage.
+        // This ensures that Reloads and Restored Tabs count as new visits (Resetting the timer),
+        // identifying a true "Page Load" event vs just a Focus/Visibility event.
+        const isNewVisit = !this.isIframe && !this._launchCounted;
         if (isNewVisit) {
-            sessionStorage.setItem('cure_launch_counted', '1');
+            this._launchCounted = true;
         }
 
         this._pEvaluation = new Promise(resolve => {

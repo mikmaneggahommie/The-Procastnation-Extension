@@ -60,7 +60,7 @@ const ensureRestored = () => {
  * Broadcasts to all tabs if a threshold is crossed.
  */
 
-function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage') {
+function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage', isNewLaunch = false) {
     if (!g_settingsCache || g_settingsCache.masterReminders === false) return;
 
     // FIX: Cooldown guard — skip evaluation for 1500ms after a settings change.
@@ -83,33 +83,58 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
         const rInt = (g_settingsCache.reminderInterval || 15) * 60;
         const intervalMins = rInt / 60;
         const rType = g_settingsCache.reminderIntervalType || 'repeating';
-        const configHash = `site_${rType}_${intervalMins}`;
+        const rWindow = g_settingsCache.reminderIntervalWindow || '0';
+        const isPerVisit = String(rWindow) === '0';
+        const configHash = `site_${rType}_${intervalMins}_${rWindow}`;
         const reminderKey = `${hostname}_time`;
         
         let state = g_activeReminders.get(reminderKey);
 
-        // FIX 196: Only 'trackUsage' is authoritative for Time Creation.
-        // 'trackLaunch' might have stale/zero time data if called before stats sync.
-        if ((!state || state.configHash !== configHash) && source === 'usage') {
+        // ATOMIC INITIALIZATION
+        // We allow initialization from 'launch' or 'usage', but we must have data.
+        if (!state || state.configHash !== configHash) {
+            // AUTHORITATIVE BASELINE: Use snapshot if available, otherwise current time.
+            // This ensures any settings switch (e.g. Every -> Once) starts relative to your current time.
+            const initialBaseline = Math.max(siteStats.cumulativeSeconds || 0, sittingSeconds);
+            
+            // LAZY INIT: If data is 0 (lagging or fresh start), wait for 1s of usage before establishing baseline.
+            // This prevents "Laggy Resumes" or "Quick Settings Changes" from accidentally setting a 0 baseline.
+            if (isPerVisit && initialBaseline < 1) return;
+
             const wasActive = state && state.active;
             state = {
                 configHash,
-                baselineSecs: sittingSeconds, // PRECISION: Store raw seconds
+                baselineSecs: initialBaseline, 
                 lastTriggeredOffset: 0,
+                lastHeartbeat: mins,
                 onceTriggered: false,
                 rType: rType,
                 type: 'time',
                 active: false 
             };
             g_activeReminders.set(reminderKey, state);
-            console.log(`[Cure] Established Precision Baseline for ${hostname}: ${sittingSeconds}s (Config: ${configHash})`);
+            console.log(`[Cure] Established Precision Baseline for ${hostname}: ${initialBaseline}s (Source: ${source})`);
             
             if (wasActive) {
                 broadcastReminderStateCentral({ hostname: hostname, show: false, type: 'time' });
             }
         }
         
-        // If state doesn't exist yet (and we represent 'launch' source), skip time evaluation
+        // FIX: Per-Visit Baseline Reset
+        // When "per visit" is selected, reset the reminder baseline ONLY on a fresh launch (New Visit).
+        if (state && isPerVisit && isNewLaunch) {
+            // Guard: Use snapshot to ensure we don't reset to 0 if data is lagging.
+            const targetBaseline = Math.max(siteStats.cumulativeSeconds || 0, sittingSeconds);
+            
+            // If data is genuinely 0 (e.g. fresh Day), we reset to 0.
+            // But if snapshot exists (e.g. resumed Visit), we reset to snapshot.
+            state.baselineSecs = targetBaseline;
+            state.lastTriggeredOffset = 0;
+            state.onceTriggered = false;
+            state.active = false; 
+            broadcastReminderStateCentral({ hostname: hostname, show: false, type: 'time' });
+        }
+        
         if (!state) return;
 
         const effectiveSecs = sittingSeconds - state.baselineSecs;
@@ -786,6 +811,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'trackLaunch') {
+        // FIX: Ignore iframes triggering trackLaunch.
+        // If specific iframes (ads, widgets) trigger this, it can spam launch counts
+        // and cause the "Per Visit" reminder to strobe/reset repeatedly.
+        if (sender.frameId !== 0) return;
+
         const hostname = cleanHost(request.hostname);
         (async () => {
             try {
@@ -811,6 +841,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 let isLocked = false;
                 let currentSessionActive = false;
+                let sessionResumed = false; // Flag for Smart Reset
 
                 // Use request window if provided (for reminders), else use config (for hard lock)
                 const effectiveWindowSeconds = request.windowSeconds || config.windowSeconds || 3600;
@@ -819,12 +850,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // 1. Check active session
                 if (siteStats.activeSession) {
                     const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
-                    if (inactivityElapsed < 2) {
+                    if (inactivityElapsed < 15) { // FIX: Increase resume window to 15m to be safe logic
                         currentSessionActive = true;
+                        sessionResumed = true;
                         siteStats.activeSession.lastActive = now;
                         siteStats.lastActiveAt = now;
                     } else {
                         siteStats.activeSession = null;
+                        siteStats.cumulativeSeconds = 0; // Clear snapshot on new session
                     }
                 }
 
@@ -871,8 +904,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         siteStats.launches.push(now);
                         
                         if (!siteStats.activeSession) {
-                            siteStats.activeSession = { startTime: now, lastActive: now };
+                        // FIX: Session Resurrection
+                        // If activeSession is lost (expired/cleared) but we have a snapshot, usage it to RESUME!
+                        if ((siteStats.cumulativeSeconds || 0) > 5) {
+                             const recoveredSecs = siteStats.cumulativeSeconds;
+                             const estimatedStart = now - (recoveredSecs * 1000);
+                             siteStats.activeSession = { startTime: estimatedStart, lastActive: now };
+                             sessionResumed = true; // Treat as resume
+                             console.log(`[Cure] Resurrected session from snapshot: ${recoveredSecs}s`);
                         } else {
+                             siteStats.activeSession = { startTime: now, lastActive: now };
+                        }
+                    } else {
                             // If we had a session but it was nullified/cleared, ensure lastActive is updated
                             siteStats.activeSession.lastActive = now;
                         }
@@ -890,10 +933,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let sittingSeconds = 0;
                 if (siteStats.activeSession && siteStats.activeSession.startTime) {
                     sittingSeconds = (siteStats.usageHistory || [])
-                        .filter(c => c.ts >= siteStats.activeSession.startTime)
-                        .reduce((acc, c) => acc + (c.dur || 0), 0);
+                    .filter(c => c.ts >= siteStats.activeSession.startTime - 1000) // FIX: Buffer for timestamp skew
+                    .reduce((acc, c) => acc + (c.dur || 0), 0);
+                
+                // FIX: Use Persistent Snapshot if Resumed
+                if (sessionResumed) {
+                     sittingSeconds = Math.max(sittingSeconds, siteStats.cumulativeSeconds || 0);
                 }
-                evaluateReminders(stats, hostname, sittingSeconds, now, 'launch');
+            }
+
+            // FIX: Smart Reset Suppression
+            // With the snapshot logic, sittingSeconds should be accurate (e.g. 15s).
+            // But if snapshot was missing too, we still guard against 0-reset.
+            const shouldReset = request.isNewVisit && !(sessionResumed && sittingSeconds < 5);
+
+            evaluateReminders(stats, hostname, sittingSeconds, now, 'launch', shouldReset);
+                
+                // FIX: Robust Persistence
+                // Ensure launch/session updates are saved immediately, preventing data loss on rapid close.
+                saveStats();
 
                 // 3. Info for UI (Calculate based on effective window)
                 const history = (siteStats.launches || []).filter(ts => now - ts < windowMs);
@@ -1062,7 +1120,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     const sessionStart = siteStats.activeSession.startTime;
                     const history = stats.sites[hostname].usageHistory || [];
                     sittingSeconds = history
-                        .filter(c => c.ts >= sessionStart)
+                        .filter(c => c.ts >= sessionStart - 1000) // FIX: Buffer for timestamp skew
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
                     
                     // DEBUG: Log calculation
@@ -1071,8 +1129,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     // Fallback to rolling window if no active session
                     const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
                     const timeoutMs = timeoutMins * 60 * 1000;
-                    const history = stats.sites[hostname].usageHistory || [];
-                    sittingSeconds = history
+                    sittingSeconds = (siteStats?.usageHistory || [])
                         .filter(c => now - c.ts < timeoutMs)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
                     
@@ -1080,8 +1137,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                      // console.log(`[Cure] Rolling Calc: Host=${hostname} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
                 }
 
-                // --- REMINDER EVALUATION (Centralized) ---
-                evaluateReminders(stats, hostname, sittingSeconds, now, 'usage');
+                 // --- REMINDER EVALUATION (Centralized) ---
+                 if (siteStats.activeSession) {
+                     siteStats.activeSession.lastActive = now; // FIX: Update lastActive so session doesn't expire prematurely
+                 }
+                 
+                 // PROTECT SNAPSHOT: Only update if authoritative (session active) or time is increasing.
+                 // This prevents data lags from overwriting a good snapshot with 0.
+                 if (siteStats.activeSession || sittingSeconds > (siteStats.cumulativeSeconds || 0)) {
+                     siteStats.cumulativeSeconds = sittingSeconds; // Save snapshot for robust resume
+                 }
+                 
+                 evaluateReminders(stats, hostname, sittingSeconds, now, 'usage');
 
                 saveStats();
                 

@@ -590,6 +590,7 @@ function populateInputs() {
     setChk('reminder-interval-enable', !!currentSettings.reminderIntervalEnabled);
     setVal('reminder-interval-type', currentSettings.reminderIntervalType || 'repeating');
     setConvertedVal('reminder-input', 'reminder-unit', reminders);
+    setVal('reminder-interval-window', currentSettings.reminderIntervalWindow || '0');
     setChk('reminder-whitelist-enable', !!currentSettings.reminderWhitelist);
 
     setVal('reminder-browser-type', currentSettings.reminderBrowserType || 'once');
@@ -1747,6 +1748,7 @@ function setupNewViewListeners() {
 
         currentSettings.reminderIntervalEnabled = document.getElementById('reminder-interval-enable').checked;
         currentSettings.reminderIntervalType = document.getElementById('reminder-interval-type').value;
+        currentSettings.reminderIntervalWindow = document.getElementById('reminder-interval-window')?.value || '0';
         currentSettings.reminderBrowserType = document.getElementById('reminder-browser-type').value;
         currentSettings.reminderInterval = Math.floor(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 15;
         
@@ -1832,7 +1834,7 @@ function setupNewViewListeners() {
     });
 
     // Additional listeners for Reminders inputs to ensure dirty state
-    ['reminder-interval-type', 'reminder-browser-type', 'reminder-input', 'reminder-unit', 'reminder-trigger-browser-val', 'reminder-trigger-browser-unit', 'reminder-trigger-launch-val', 'reminder-trigger-launch-window', 'reminder-style-input', 'reminder-whitelist-enable'].forEach(id => {
+    ['reminder-interval-type', 'reminder-interval-window', 'reminder-browser-type', 'reminder-input', 'reminder-unit', 'reminder-trigger-browser-val', 'reminder-trigger-browser-unit', 'reminder-trigger-launch-val', 'reminder-trigger-launch-window', 'reminder-style-input', 'reminder-whitelist-enable'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             const eventType = (el.type === 'number' || el.type === 'text') ? 'input' : 'change';
