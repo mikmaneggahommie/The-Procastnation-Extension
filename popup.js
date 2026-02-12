@@ -551,7 +551,7 @@ function populateInputs() {
     document.getElementById('pill-enable-input').checked = currentSettings.showTimerPill !== false;
     document.getElementById('pill-whitelist-input').checked = !!currentSettings.showPillOnWhitelist;
     document.getElementById('whitelist-shortcuts-input').checked = !!currentSettings.whitelistShortcuts;
-    document.getElementById('session-timeout-input').value = currentSettings.sessionTimeoutMins || 15;
+    document.getElementById('session-timeout-input').value = currentSettings.sessionTimeoutMins || 30;
 
     // Master Switches
     const hardLockOn = !!currentSettings.masterHardLock;
@@ -1366,7 +1366,7 @@ function setupListeners() {
             currentSettings.breathingFreq = document.getElementById('breathing-freq').value;
             
             // Session Timeout (mins)
-            currentSettings.sessionTimeoutMins = parseInt(document.getElementById('session-timeout-input').value) || 15;
+            currentSettings.sessionTimeoutMins = parseInt(document.getElementById('session-timeout-input').value) || 30;
             saveSettings();
             showSavedIndicator();
             // Immediate navigate back to HOME

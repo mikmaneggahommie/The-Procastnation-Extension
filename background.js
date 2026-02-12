@@ -533,7 +533,7 @@ const DEFAULT_SETTINGS = {
         { name: 'Notion', url: 'https://notion.com' }
     ],
     breathingRoomDuration: 15,
-    sessionTimeoutMins: 15, // Gap to reset visits (Per Visit mode) and session resurrected floor
+    sessionTimeoutMins: 30, // Gap to reset visits (Per Visit mode) and session resurrected floor
     hardLockDuration: 30, // Minutes
     unlockReward: 5, // Minutes
     unlockRewardType: 'time', // or 'session'
@@ -849,7 +849,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // 1. Check active session
                 if (siteStats.activeSession) {
-                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 15;
+                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
                     const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
                     if (inactivityElapsed < timeoutMins) { // Use configurable session timeout logic
                         currentSessionActive = true;
@@ -1128,7 +1128,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     // console.log(`[Cure] Session Calc: Host=${hostname} Start=${sessionStart} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
                 } else {
                     // Fallback to rolling window if no active session
-                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 15;
+                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
                     const timeoutMs = timeoutMins * 60 * 1000;
                     sittingSeconds = (siteStats?.usageHistory || [])
                         .filter(c => now - c.ts < timeoutMs)
@@ -1193,7 +1193,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         .filter(c => c.ts >= sessionStart)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
                 } else {
-                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 15;
+                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
                     const timeoutMs = timeoutMins * 60 * 1000;
                     sittingSeconds = (siteStats?.usageHistory || [])
                         .filter(c => now - c.ts < timeoutMs)
