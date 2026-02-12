@@ -80,7 +80,7 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
     
     // 1. Site Activity Reminder
     if (g_settingsCache.reminderIntervalEnabled !== false) {
-        const rInt = (g_settingsCache.reminderInterval || 15) * 60;
+        const rInt = (g_settingsCache.reminderInterval || 30) * 60;
         const intervalMins = rInt / 60;
         const rType = g_settingsCache.reminderIntervalType || 'repeating';
         const rWindow = g_settingsCache.reminderIntervalWindow || '0';
@@ -537,7 +537,7 @@ const DEFAULT_SETTINGS = {
     hardLockDuration: 30, // Minutes
     unlockReward: 5, // Minutes
     unlockRewardType: 'time', // or 'session'
-    reminderInterval: 15, // Minutes
+    reminderInterval: 30, // Minutes
     reminderIntervalEnabled: true,
     reminderIntervalType: 'repeating',
     reminderBrowserType: 'repeating', 

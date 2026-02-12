@@ -535,7 +535,7 @@ function updateUnitGrammar(inputId, unitId) {
 function populateInputs() {
     const breathing = currentSettings.breathingRoomDuration || 15; // User Req: 15s default
     const hardlock = currentSettings.hardLockDuration || 30;
-    const reminders = (currentSettings.reminderInterval || 15) * 60; // Storage is min
+    const reminders = (currentSettings.reminderInterval || 30) * 60; // Storage is min
     const difficulty = currentSettings.unlockProtocols?.typing?.difficulty || currentSettings.typingDifficulty || 50;
     const reward = (currentSettings.unlockReward || 5) * 60; // Storage is min
     const rStyle = currentSettings.reminderStyle || 'toast';
@@ -1357,7 +1357,7 @@ function setupListeners() {
             }
 
             currentSettings.breathingRoomDuration = getConvertedVal('breathing-input', 'breathing-unit') || 15;
-            currentSettings.reminderInterval = Math.ceil(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 15;
+            currentSettings.reminderInterval = Math.ceil(getConvertedVal('reminder-input', 'reminder-unit') / 60) || 30;
             currentSettings.reminderStyle = document.getElementById('reminder-style-input').value;
             currentSettings.soundEnabled = document.getElementById('sound-input').checked;
             currentSettings.showTimerPill = document.getElementById('pill-enable-input').checked;
