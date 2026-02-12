@@ -538,6 +538,7 @@ function populateInputs() {
     document.getElementById('pill-enable-input').checked = currentSettings.showTimerPill !== false;
     document.getElementById('pill-whitelist-input').checked = !!currentSettings.showPillOnWhitelist;
     document.getElementById('whitelist-shortcuts-input').checked = !!currentSettings.whitelistShortcuts;
+    document.getElementById('session-timeout-input').value = currentSettings.sessionTimeoutMins || 15;
 
     // Master Switches
     const hardLockOn = !!currentSettings.masterHardLock;
@@ -1350,6 +1351,9 @@ function setupListeners() {
             currentSettings.showPillOnWhitelist = document.getElementById('pill-whitelist-input').checked;
             currentSettings.whitelistShortcuts = document.getElementById('whitelist-shortcuts-input').checked;
             currentSettings.breathingFreq = document.getElementById('breathing-freq').value;
+            
+            // Session Timeout (mins)
+            currentSettings.sessionTimeoutMins = parseInt(document.getElementById('session-timeout-input').value) || 15;
             saveSettings();
             showSavedIndicator();
             // Immediate navigate back to HOME
@@ -2221,7 +2225,8 @@ function setupInputValidation() {
         
         { id: 'reminder-input', min: 1, max: 1440 },        // Reminder interval
         { id: 'reminder-trigger-browser-val', min: 1, max: 1440 }, // Reminder screen time
-        { id: 'reminder-trigger-launch-val', min: 1, max: 999 }    // Reminder launch trigger
+        { id: 'reminder-trigger-launch-val', min: 1, max: 999 },    // Reminder launch trigger
+        { id: 'session-timeout-input', min: 1, max: 1440 }         // Session Reset Timeout
     ];
 
     numericInputs.forEach(config => {
