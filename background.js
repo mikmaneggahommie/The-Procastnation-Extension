@@ -1149,7 +1149,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                      siteStats.cumulativeSeconds = sittingSeconds; // Save snapshot for robust resume
                  }
                  
-                 evaluateReminders(stats, hostname, dailySiteTotal, now, 'usage', !sessionResumed);
+                  const sessionResumed = !!siteStats.activeSession;
+                  evaluateReminders(stats, hostname, dailySiteTotal, now, 'usage', !sessionResumed);
 
                 saveStats();
                 
