@@ -1126,16 +1126,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     
                     // DEBUG: Log calculation
                     // console.log(`[Cure] Session Calc: Host=${hostname} Start=${sessionStart} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
-                } else {
-                    const timeoutMins = 0; // Pure visit reset
-                    const timeoutMs = 0;
-                    sittingSeconds = (siteStats?.usageHistory || [])
-                        .filter(c => now - c.ts < timeoutMs)
-                        .reduce((acc, c) => acc + (c.dur || 0), 0);
-                    
-                     // DEBUG: Log fallback
-                     // console.log(`[Cure] Rolling Calc: Host=${hostname} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
                 }
+                 
+                 // FIX: Always calculate Daily Total for the UI
+                 // The user wants the Pill to show cumulative daily time (24h/since reset), 
+                 // regardless of whether the reminder is "Per Visit" or "Per Day".
+                 const dailySiteTotal = (siteStats?.usageHistory || []).reduce((acc, c) => acc + (c.dur || 0), 0);
 
                  // --- REMINDER EVALUATION (Centralized) ---
                  if (siteStats.activeSession) {
@@ -1160,7 +1156,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             if (t.url && cleanHost(new URL(t.url).hostname) === hostname) {
                                 chrome.tabs.sendMessage(t.id, { 
                                     action: 'timerUpdate', 
-                                    seconds: sittingSeconds,
+                                    seconds: dailySiteTotal, // Always send DAILY TOTAL to the Pill
                                     hostname: hostname
                                 }).catch(() => {});
                             }
@@ -1168,7 +1164,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     });
                 });
 
-                sendResponse({ success: true, sittingSeconds });
+                sendResponse({ success: true, sittingSeconds: dailySiteTotal });
             } catch (e) {
                 console.error('[Cure] trackUsage failed:', e);
                 sendResponse({ success: false, error: e.message });
@@ -1191,15 +1187,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                      sittingSeconds = (siteStats.usageHistory || [])
                         .filter(c => c.ts >= sessionStart)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
-                } else {
-                    const timeoutMins = 0; // Pure visit reset
-                    const timeoutMs = 0;
-                    sittingSeconds = (siteStats?.usageHistory || [])
-                        .filter(c => now - c.ts < timeoutMs)
-                        .reduce((acc, c) => acc + (c.dur || 0), 0);
                 }
                     
-                sendResponse({ seconds: sittingSeconds });
+                // The UI always wants Daily Total
+                const dailySiteTotal = (siteStats?.usageHistory || []).reduce((acc, c) => acc + (c.dur || 0), 0);
+                sendResponse({ seconds: dailySiteTotal });
             } catch (e) {
                 sendResponse({ seconds: 0, error: e.message });
             }
