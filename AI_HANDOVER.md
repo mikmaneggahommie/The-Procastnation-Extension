@@ -8,6 +8,14 @@
 1.  **Read the Docs**: Read `MILESTONES.md`, `LOCKED_FEATURES.md`, and `AI_HANDOVER.md` immediately upon starting.
 2.  **Branch First**: Every new task/fix MUST start in a new feature branch (`git checkout -b task-name`). Never work directly on `main`.
 
+### 3. Simplified "Per Visit" Logic (Page Load Based)
+
+Based on technical refinement, we've removed the redundant "Session Offset" (Stay away for X mins) setting.
+
+- **Pure Reset**: Closing and reopening a tab now triggers a fresh visit/reminder clock instantly.
+- **Stability**: A 2-minute internal grace period prevents accidental resets during simple page refreshes.
+- **Clean UI**: No more confusing "Stay away" settings in the configuration.
+
 ## 🆘 THE BUG RULE (3-Strike System)
 
 If you make a change and it fails OR if the user says "it's broken":

@@ -855,9 +855,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // 1. Check active session
                 if (siteStats.activeSession) {
-                    const timeoutMins = 0; // Pure visit reset
+                    const timeoutMins = (settings.sessionTimeoutMins || 0);
+                    // For "Pure Visit" mode (timeout = 0): Only expire on explicit new visit, not heartbeats.
+                    // For timed timeout: Apply normal inactivity logic.
                     const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
-                    if (inactivityElapsed < timeoutMins) { 
+                    if (timeoutMins === 0 ? !request.isNewVisit : inactivityElapsed < timeoutMins) { 
                         currentSessionActive = true;
                         sessionResumed = true;
                         siteStats.activeSession.lastActive = now;
@@ -950,8 +952,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sittingSeconds = Math.max(sittingSeconds, siteStats.cumulativeSeconds || 0);
             }
 
-            // FIX: Robust Reset Logic & Daily Total for Evaluator
-            const shouldReset = request.isNewVisit || !sessionResumed;
+            // FIX: Per-Visit Reset is ONLY on genuine new page loads.
+            // The !sessionResumed fallback was incorrectly treating every heartbeat as a new visit
+            // when no launch-based triggers were enabled (no session ever created).
+            const shouldReset = !!request.isNewVisit;
             const dailySiteTotal = (siteStats.usageHistory || []).reduce((acc, c) => acc + (c.dur || 0), 0);
             evaluateReminders(stats, hostname, dailySiteTotal, now, 'launch', shouldReset);
                 
@@ -1149,8 +1153,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                      siteStats.cumulativeSeconds = sittingSeconds; // Save snapshot for robust resume
                  }
                  
-                  const sessionResumed = !!siteStats.activeSession;
-                  evaluateReminders(stats, hostname, dailySiteTotal, now, 'usage', !sessionResumed);
+                  // FIX: trackUsage heartbeats are NEVER a "new launch".
+                  // Previously used !sessionResumed which was always true when no launch-based triggers
+                  // were enabled (no session ever created), causing per-visit baseline to reset every tick.
+                  evaluateReminders(stats, hostname, dailySiteTotal, now, 'usage', false);
 
                 saveStats();
                 
