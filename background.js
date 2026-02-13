@@ -533,7 +533,7 @@ const DEFAULT_SETTINGS = {
         { name: 'Notion', url: 'https://notion.com' }
     ],
     breathingRoomDuration: 15,
-    sessionTimeoutMins: 2, // Internal grace period to merge visits (e.g. refreshes)
+    sessionTimeoutMins: 0, // Reset instantly on tab close (Pure Visit mode)
     hardLockDuration: 30, // Minutes
     unlockReward: 5, // Minutes
     unlockRewardType: 'time', // or 'session'
@@ -849,7 +849,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // 1. Check active session
                 if (siteStats.activeSession) {
-                    const timeoutMins = 2; // Hard-coded 2m grace period for stability
+                    const timeoutMins = 0; // Pure visit reset
                     const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
                     if (inactivityElapsed < timeoutMins) { 
                         currentSessionActive = true;
@@ -1127,8 +1127,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     // DEBUG: Log calculation
                     // console.log(`[Cure] Session Calc: Host=${hostname} Start=${sessionStart} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
                 } else {
-                    const timeoutMins = 2; // 2m default window for total usage calc
-                    const timeoutMs = timeoutMins * 60 * 1000;
+                    const timeoutMins = 0; // Pure visit reset
+                    const timeoutMs = 0;
                     sittingSeconds = (siteStats?.usageHistory || [])
                         .filter(c => now - c.ts < timeoutMs)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
@@ -1192,8 +1192,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         .filter(c => c.ts >= sessionStart)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
                 } else {
-                    const timeoutMins = 2; // 2m default window
-                    const timeoutMs = timeoutMins * 60 * 1000;
+                    const timeoutMins = 0; // Pure visit reset
+                    const timeoutMs = 0;
                     sittingSeconds = (siteStats?.usageHistory || [])
                         .filter(c => now - c.ts < timeoutMs)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
