@@ -533,7 +533,7 @@ const DEFAULT_SETTINGS = {
         { name: 'Notion', url: 'https://notion.com' }
     ],
     breathingRoomDuration: 15,
-    sessionTimeoutMins: 30, // Gap to reset visits (Per Visit mode) and session resurrected floor
+    sessionTimeoutMins: 2, // Internal grace period to merge visits (e.g. refreshes)
     hardLockDuration: 30, // Minutes
     unlockReward: 5, // Minutes
     unlockRewardType: 'time', // or 'session'
@@ -849,9 +849,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // 1. Check active session
                 if (siteStats.activeSession) {
-                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
+                    const timeoutMins = 2; // Hard-coded 2m grace period for stability
                     const inactivityElapsed = (now - siteStats.activeSession.lastActive) / 60000;
-                    if (inactivityElapsed < timeoutMins) { // Use configurable session timeout logic
+                    if (inactivityElapsed < timeoutMins) { 
                         currentSessionActive = true;
                         sessionResumed = true;
                         siteStats.activeSession.lastActive = now;
@@ -1127,8 +1127,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     // DEBUG: Log calculation
                     // console.log(`[Cure] Session Calc: Host=${hostname} Start=${sessionStart} HistoryLen=${history.length} Sitting=${sittingSeconds}`);
                 } else {
-                    // Fallback to rolling window if no active session
-                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
+                    const timeoutMins = 2; // 2m default window for total usage calc
                     const timeoutMs = timeoutMins * 60 * 1000;
                     sittingSeconds = (siteStats?.usageHistory || [])
                         .filter(c => now - c.ts < timeoutMs)
@@ -1193,7 +1192,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         .filter(c => c.ts >= sessionStart)
                         .reduce((acc, c) => acc + (c.dur || 0), 0);
                 } else {
-                    const timeoutMins = (g_settingsCache && g_settingsCache.sessionTimeoutMins) || 30;
+                    const timeoutMins = 2; // 2m default window
                     const timeoutMs = timeoutMins * 60 * 1000;
                     sittingSeconds = (siteStats?.usageHistory || [])
                         .filter(c => now - c.ts < timeoutMs)

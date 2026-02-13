@@ -549,15 +549,7 @@ function populateInputs() {
     setConvertedVal('unlock-reward-input', 'unlock-reward-unit', reward);
     setVal('unlock-reward-unit', currentSettings.unlockRewardType || 'min');
     document.getElementById('pill-enable-input').checked = currentSettings.showTimerPill !== false;
-    document.getElementById('pill-whitelist-input').checked = !!currentSettings.showPillOnWhitelist;
     document.getElementById('whitelist-shortcuts-input').checked = !!currentSettings.whitelistShortcuts;
-    // Contextual Session Timeout Inputs (Sync both)
-    const hlSessionInput = document.getElementById('hl-session-timeout-input');
-    const remindSessionInput = document.getElementById('remind-session-timeout-input');
-    const sessionTimeoutVal = currentSettings.sessionTimeoutMins || 30;
-    
-    if (hlSessionInput) hlSessionInput.value = sessionTimeoutVal;
-    if (remindSessionInput) remindSessionInput.value = sessionTimeoutVal;
 
     // Master Switches
     const hardLockOn = !!currentSettings.masterHardLock;
@@ -1372,10 +1364,7 @@ function setupListeners() {
             currentSettings.breathingFreq = document.getElementById('breathing-freq').value;
             
             // Session Timeout (mins)
-            // Session Timeout (mins) - Get from whichever is available
-            const hlSessionVal = parseInt(document.getElementById('hl-session-timeout-input')?.value);
-            const remindSessionVal = parseInt(document.getElementById('remind-session-timeout-input')?.value);
-            currentSettings.sessionTimeoutMins = hlSessionVal || remindSessionVal || 30;
+            // Site Stats Saving
             saveSettings();
             showSavedIndicator();
             // Immediate navigate back to HOME
@@ -2078,19 +2067,6 @@ function updateUIState() {
     } else {
         hideValidationWarning();
     }
-    // 7. Contextual Session Offset Visibility
-    const hlWindow = document.getElementById('session-reset-window')?.value;
-    const remindWindow = document.getElementById('reminder-interval-window')?.value;
-    
-    const hlOffsetConfig = document.getElementById('hl-session-offset-config');
-    const remindOffsetConfig = document.getElementById('remind-session-offset-config');
-
-    if (hlOffsetConfig) {
-        hlOffsetConfig.style.display = (hlWindow === '0') ? 'block' : 'none';
-    }
-    if (remindOffsetConfig) {
-        remindOffsetConfig.style.display = (remindWindow === '0') ? 'block' : 'none';
-    }
 }
 
 function toggleSub(chkId, divId) {
@@ -2274,9 +2250,7 @@ function setupInputValidation() {
         
         { id: 'reminder-input', min: 1, max: 1440 },        // Reminder interval
         { id: 'reminder-trigger-browser-val', min: 1, max: 1440 }, // Reminder screen time
-        { id: 'reminder-trigger-launch-val', min: 1, max: 999 },    // Reminder launch trigger
-        { id: 'hl-session-timeout-input', min: 1, max: 1440 },      // Session Reset Timeout (HL)
-        { id: 'remind-session-timeout-input', min: 1, max: 1440 }   // Session Reset Timeout (Reminders)
+        { id: 'reminder-trigger-launch-val', min: 1, max: 999 }    // Reminder launch trigger
     ];
 
     numericInputs.forEach(config => {
@@ -2336,20 +2310,6 @@ function setupInputValidation() {
             }
         });
     });
-
-    // 4. Session Offset Contextual Sync & Visibility
-    const hlSync = document.getElementById('hl-session-timeout-input');
-    const remindSync = document.getElementById('remind-session-timeout-input');
-
-    const syncSessionVal = (e) => {
-        const val = e.target.value;
-        if (hlSync) hlSync.value = val;
-        if (remindSync) remindSync.value = val;
-        if (currentSettings) currentSettings.sessionTimeoutMins = parseInt(val) || 30;
-    };
-
-    if (hlSync) hlSync.addEventListener('input', syncSessionVal);
-    if (remindSync) remindSync.addEventListener('input', syncSessionVal);
 
     // Listen to window selectors to show/hide the offset
     document.querySelectorAll('.window-selector').forEach(sel => {

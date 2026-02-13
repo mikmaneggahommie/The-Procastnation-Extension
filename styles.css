@@ -251,13 +251,6 @@ body {
     filter 0.3s ease;
 }
 
-.session-offset-sub {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  animation: slideDownIn 0.3s ease-out;
-}
-
 @keyframes slideDownIn {
   from {
     opacity: 0;
