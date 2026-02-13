@@ -944,11 +944,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sittingSeconds = Math.max(sittingSeconds, siteStats.cumulativeSeconds || 0);
             }
 
-            // FIX: Robust Reset Logic
-            // A reset should occur if explicitly requested (isNewVisit) OR if the session expired (!sessionResumed).
+            // FIX: Robust Reset Logic & Daily Total for Evaluator
             const shouldReset = request.isNewVisit || !sessionResumed;
-
-            evaluateReminders(stats, hostname, sittingSeconds, now, 'launch', shouldReset);
+            const dailySiteTotal = (siteStats.usageHistory || []).reduce((acc, c) => acc + (c.dur || 0), 0);
+            evaluateReminders(stats, hostname, dailySiteTotal, now, 'launch', shouldReset);
                 
                 // FIX: Robust Persistence
                 // Ensure launch/session updates are saved immediately, preventing data loss on rapid close.
@@ -1144,7 +1143,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                      siteStats.cumulativeSeconds = sittingSeconds; // Save snapshot for robust resume
                  }
                  
-                 evaluateReminders(stats, hostname, sittingSeconds, now, 'usage');
+                 evaluateReminders(stats, hostname, dailySiteTotal, now, 'usage');
 
                 saveStats();
                 
