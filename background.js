@@ -129,10 +129,16 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
             // If data is genuinely 0 (e.g. fresh Day), we reset to 0.
             // But if snapshot exists (e.g. resumed Visit), we reset to snapshot.
             state.baselineSecs = targetBaseline;
-            state.lastTriggeredOffset = 0;
+            state.lastTriggeredOffset = 0; // FIX: Ensure offset is reset when baseline moves
             state.onceTriggered = false;
             state.active = false; 
             broadcastReminderStateCentral({ hostname: hostname, show: false, type: 'time' });
+        }
+        
+        if (state && !isNewLaunch) {
+             // Second Guard: If the baseline is in the future relative to usage (can happen on race), sync it.
+             // OR if we are far away from the baseline, it means we probably missed a reset?
+             // Actually, the trackLaunch reset is authoritative.
         }
         
         if (!state) return;
@@ -1143,7 +1149,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                      siteStats.cumulativeSeconds = sittingSeconds; // Save snapshot for robust resume
                  }
                  
-                 evaluateReminders(stats, hostname, dailySiteTotal, now, 'usage');
+                 evaluateReminders(stats, hostname, dailySiteTotal, now, 'usage', !sessionResumed);
 
                 saveStats();
                 
