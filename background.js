@@ -122,7 +122,9 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
         
         // FIX: Per-Visit Baseline Reset
         // When "per visit" is selected, reset the reminder baseline ONLY on a fresh launch (New Visit).
-        if (state && isPerVisit && isNewLaunch) {
+        // BUT: Skip reset if reminder is currently active (overlay showing) — new tabs should
+        // inherit the active reminder, not dismiss it. Reset happens after user dismisses.
+        if (state && isPerVisit && isNewLaunch && !state.active) {
             // Guard: Use snapshot to ensure we don't reset to 0 if data is lagging.
             const targetBaseline = Math.max(siteStats.cumulativeSeconds || 0, sittingSeconds);
             
