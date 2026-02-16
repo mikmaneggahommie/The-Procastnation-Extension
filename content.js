@@ -756,7 +756,7 @@ class CureVault {
                         this._lastHeartbeatMinute = request.value;
                     }
 
-                    this.renderReminderOverlay(request.value, request.type, true, rStyle);
+                    this.renderReminderOverlay(request.value, request.type, true, rStyle, request.hostname);
                 }
             }
             return;
@@ -2459,6 +2459,7 @@ class CureVault {
     showToast(msg, type = 'info', options = {}) {
         // FIX 115: Removed isIframe check. 
         const root = this.ensureShadow();
+        if (!root) return; // FIX: Null guard for early call or missing body
 
         // FIX 174: Reuse existing popout to prevent flickering/re-animation
         const existing = root.getElementById('cure-popout-notification');
@@ -2569,7 +2570,7 @@ class CureVault {
 
                 this.safeSendMessage({
                     action: 'broadcastReminderState',
-                    hostname: isGlobal ? 'global' : window.location.hostname,
+                    hostname: isGlobal ? 'global' : (options.targetHostname || window.location.hostname),
                     show: false,
                     type: rType,
                     reminderStyle: 'toast',
@@ -3106,7 +3107,7 @@ class CureVault {
         }
     }
 
-    renderReminderOverlay(value, type = 'time', forced = false, styleOverride = null) {
+    renderReminderOverlay(value, type = 'time', forced = false, styleOverride = null, targetHostname = null) {
         // NUCLEAR SAFEGUARD: If we ever try to show a "0 min" site reminder, self-destruct.
         if (type === 'time' && value <= 0 && !forced) {
             console.log('[Cure] Suppressing 0-min ghost reminder overlay.');
@@ -3182,7 +3183,7 @@ class CureVault {
             } else {
                 toastMsg = `⏰ ${this.getSiteName()} Activity: ${value}m spent`;
             }
-            this.showToast(toastMsg, 'reminder', { reminderType: type });
+            this.showToast(toastMsg, 'reminder', { reminderType: type, targetHostname: targetHostname || window.location.hostname });
             
             // Broadcast to background so other tabs/iframes can restore this toast
             if (!forced) {

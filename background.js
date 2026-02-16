@@ -430,9 +430,9 @@ function broadcastReminderStateCentral(payload, excludeTabId = null) {
     chrome.tabs.query({}, (tabs) => {
         tabs.forEach(tab => {
             // FIX: Exclude the initiator tab to prevent redundant logic cycles 
-            // BUT: If it's an overlay dismissal, we might WANT to send it to same-tab iframes?
-            // Actually, safeSendMessage in initiator handles local update.
-            if (tab.id && tab.id !== excludeTabId) {
+            // BUT: If it's an overlay dismissal (show: false), we MUST send it to the same tab
+            // to reach its iframes (initiator exclusion is usually to prevent re-opening logic loops).
+            if (tab.id && (tab.id !== excludeTabId || !show)) {
                 broadcastToTab(tab.id);
             }
         });
