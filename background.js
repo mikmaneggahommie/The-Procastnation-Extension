@@ -11,6 +11,18 @@ let g_activeGlobalReminder = null; // FIX 155: Track active global reminder (bro
 let g_activeTrackers = new Map(); // FIX 131: Strict Tracker Authority (Hostname -> { tabId, lastSeen })
 let g_settingsChangedAt = 0; // FIX: Cooldown guard to prevent stale evaluations after settings change
 let g_reminderStateRestored = false; // FIX: Ensure we don't init baselines before storage is loaded
+let g_lastSoundTime = 0; // FIX: Global sound throttle for deduplication
+let g_lastLaunchTimeByTab = new Map(); // FIX: Launch deduplication (TabId_Hostname -> TS)
+
+// FIX: Settings Sync (Real-time update for background script)
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.settings) {
+        g_settingsCache = { ...DEFAULT_SETTINGS, ...(changes.settings.newValue || {}) };
+        g_settingsChangedAt = Date.now();
+        console.log('[Cure] Settings updated in Background.');
+    }
+});
+
 
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
@@ -115,6 +127,9 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
             g_activeReminders.set(reminderKey, state);
             console.log(`[Cure] Established Precision Baseline for ${hostname}: ${initialBaseline}s (Source: ${source})`);
             
+            // FIX: Atomic Persistence (Ensure baseline survives SW restart)
+            saveReminderSnapshots();
+
             if (wasActive) {
                 broadcastReminderStateCentral({ hostname: hostname, show: false, type: 'time' });
             }
@@ -281,20 +296,35 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
         const rType = rTriggers.launchLimit.type || 'repeating';
         const configHash = `launch_${rType}_${limit}`;
         const reminderKey = `${hostname}_launch`;
+
+        // FIX: Windowed Launch Evaluation
+        // Prune history to the specific reminder window (e.g. 1 hour)
+        const windowSecs = rTriggers.launchLimit.windowSeconds || 3600;
+        const filteredHistory = siteStats.launches.filter(ts => (now - ts) < (windowSecs * 1000));
+        const currentCount = filteredHistory.length;
         
         let state = g_activeReminders.get(reminderKey);
         if (!state || state.configHash !== configHash) {
             const wasActive = state && state.active;
+            
+            // FIX: Inclusive Bucket Logic
+            // We use (currentCount - 1) so that if we are currently at a threshold (e.g. 6)
+            // when the reminder is initialized, it triggers immediately.
+            const initialOffset = Math.floor(Math.max(0, currentCount - 1) / limit) * limit;
+
             state = {
                 configHash,
-                baselineCount: siteStats.launches.length, 
-                lastTriggeredOffset: 0,
+                baselineCount: 0, 
+                lastTriggeredOffset: initialOffset,
                 onceTriggered: false,
                 rType: rType,
                 type: 'launch',
-                active: false // Force inactive for Clean Slate
+                active: false 
             };
             g_activeReminders.set(reminderKey, state);
+
+            // FIX: Atomic Persistence (Ensure baseline survives SW restart)
+            saveReminderSnapshots();
 
             if (wasActive) {
                 // Force dismissal of the old launch reminder
@@ -306,7 +336,7 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
             }
         }
 
-        const effectiveLaunches = siteStats.launches.length - state.baselineCount;
+        const effectiveLaunches = currentCount - state.baselineCount;
 
         if (state.rType === 'once') {
             if (!state.active && !state.onceTriggered && effectiveLaunches >= limit) {
@@ -314,7 +344,7 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
                 broadcastReminderStateCentral({
                     hostname: hostname,
                     show: true,
-                    value: siteStats.launches.length, // total absolute for display
+                    value: currentCount, 
                     type: 'launch',
                     reminderStyle: rStyle,
                     rMode: 'once'
@@ -322,18 +352,35 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
             }
         } else {
             // REPEATING
+            const effectiveLaunches = currentCount - state.baselineCount;
             const currentOffset = Math.floor(effectiveLaunches / limit) * limit;
             if (currentOffset > 0 && currentOffset > state.lastTriggeredOffset) {
                 state.lastTriggeredOffset = currentOffset;
                 broadcastReminderStateCentral({
                     hostname: hostname,
                     show: true,
-                    value: siteStats.launches.length,
+                    value: currentCount,
                     type: 'launch',
                     reminderStyle: rStyle,
                     rMode: 'repeating'
                 });
             }
+        }
+
+        // FIX: Live Active Sync
+        // If the reminder is already active and the count has increased (e.g. 6 -> 7),
+        // broadcast the update so the UI stays truthful.
+        if (state.active && currentCount > (state.value || 0)) {
+            state.value = currentCount;
+            broadcastReminderStateCentral({
+                hostname: hostname,
+                show: true,
+                value: currentCount,
+                type: 'launch',
+                reminderStyle: rStyle,
+                rMode: state.rType === 'repeating' ? 'repeating' : 'once'
+            });
+            saveReminderSnapshots();
         }
     }
 }
@@ -381,7 +428,9 @@ function broadcastReminderStateCentral(payload, excludeTabId = null) {
         }
     }
 
-    // FIX 129/201: Always persist state changes immediately
+    // FIX: Ensure state changes (triggers and dismissals) are persisted immediately!
+    // Without this, a Service Worker restart (common in MV3) will reload 
+    // the old state, causing reminders to reappear on every new tab.
     saveReminderSnapshots();
 
     // 2. Broadcast Function
@@ -408,7 +457,8 @@ function broadcastReminderStateCentral(payload, excludeTabId = null) {
             } else {
                 chrome.tabs.sendMessage(tabId, {
                     action: 'dismissReminderOverlay',
-                    hostname: (hostname === 'all') ? 'all' : (isGlobal ? 'global' : cleanedHostname)
+                    hostname: (hostname === 'all') ? 'all' : (isGlobal ? 'global' : cleanedHostname),
+                    initiatorInstanceId: payload.initiatorInstanceId
                 }, options).catch(() => {});
             }
         };
@@ -835,6 +885,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const hardTriggers = { ...DEFAULT_SETTINGS.hardLockTriggers, ...(settings.hardLockTriggers || {}) };
                 const pauseTriggers = { ...DEFAULT_SETTINGS.pauseTriggers, ...(settings.pauseTriggers || {}) };
                 const reminderTriggers = settings.reminderTriggers || {};
+                
+                // FIX: Whitelist Immunity (Double-Lock)
+                // Ensure background effectively ignores tracking for whitelisted sites, 
+                // preventing "Iframe Leak" where content script race conditions send data anyway.
+                if (isHostnameWhitelisted(hostname, settings.whitelist)) {
+                    // But wait! If "Reminder Whitelist" is ON, we might still need to track?
+                    // The user said "I didn't turn allow on allow list sites reminder".
+                    // So if reminderWhitelist is FALSE, we must ABORT.
+                    // launchLimit relies on tracking. 
+                    // If whitelist is active, we generally don't block OR remind.
+                    const allowReminders = !!settings.reminderWhitelist;
+                    const allowPause = !!settings.pauseWhitelist;
+                    
+                    if (!allowReminders && !allowPause) {
+                         sendResponse({ locked: false, sessionActive: false });
+                         return;
+                    }
+                }
+
 
                 // Determine which features are active for this hostname
                 const hardLockActive = settings.masterHardLock !== false && hardTriggers.launchLimit?.enabled;
@@ -885,6 +954,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         siteStats.activeSession = { startTime: now, lastActive: now, isReward: true };
                     } else {
                         siteStats.activeSession.lastActive = now;
+                    }
+                }
+
+                // --- ATOMIC VISIT DETECTION & DEDUPLICATION ---
+                const tabId = sender.tab?.id;
+                const launchKey = `${tabId}_${hostname}`;
+                if (request.isNewVisit && tabId) {
+                    const lastLaunch = g_lastLaunchTimeByTab.get(launchKey) || 0;
+                    if (now - lastLaunch < 2000) {
+                        // console.debug(`[Cure] Suppressed duplicate launch signal for ${hostname} (Tab ${tabId})`);
+                        request.isNewVisit = false; // Downgrade to "Refresh/Resume" to prevent double-count
+                    } else {
+                        g_lastLaunchTimeByTab.set(launchKey, now);
                     }
                 }
 
@@ -1047,6 +1129,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                  const stats = await getDailyStats();
                  const startHour = (g_settingsCache && g_settingsCache.dayStartHour) || 0;
                  const logicalDate = getLogicalDate(Date.now(), startHour);
+ 
+                 // FIX: Whitelist Immunity (Double-Lock)
+                 // Ensure background tracking ignores whitelisted sites unless specifically enabled.
+                 const settings = await ensureSettings();
+                 if (isHostnameWhitelisted(hostname, settings.whitelist)) {
+                     const allowReminders = !!settings.reminderWhitelist;
+                     const allowPause = !!settings.pauseWhitelist;
+                     // If neither whitelist-override is active, we stop tracking entirely.
+                     if (!allowReminders && !allowPause) {
+                         sendResponse({ success: true, sittingSeconds: 0, whitelisted: true });
+                         return;
+                     }
+                 }
+
 
                 // Double check reset (Concurrent safety: if another tab triggered reset, g_dailyStats is already updated in memory)
                 if (stats.date !== logicalDate) {
@@ -1277,12 +1373,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         g_settingsCache = newSettings;
         updateBlockingRules(newSettings?.blacklist || []);
 
-        // 1. Force dismissal of any currently visible reminders extension-wide
+        // 1. Dismiss any currently visible reminders extension-wide
         broadcastReminderStateCentral({ hostname: 'all', show: false });
 
-        // 2. Wipe memory
-        g_activeReminders.clear();
-        g_activeGlobalReminder = null;
+        // 2. Clear ONLY volatile flags, preserve baselines and offsets.
+        // This prevents the "Ghost Trigger" where a settings save resets the counter mid-visit.
+        for (const [key, state] of g_activeReminders.entries()) {
+            state.active = false;
+        }
+        if (g_activeGlobalReminder) g_activeGlobalReminder.active = false;
 
         // 3. Proactively establish precision baselines SYNCHRONOUSLY
         // FIX: Removed inaccurate proactive baseline calculation (Fix 195).
@@ -1640,6 +1739,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ success: true });
             }
         });
+        return true;
+    }
+
+    // FIX: Sound Deduplication (Deafening Sound Fix)
+    // Acts as a gatekeeper to prevent 100 tabs from playing sound simultaneously.
+    if (request.action === 'canPlaySound') {
+        const now = Date.now();
+        if (now - g_lastSoundTime > 100) {
+            g_lastSoundTime = now;
+            sendResponse({ canPlay: true });
+        } else {
+            sendResponse({ canPlay: false });
+        }
         return true;
     }
 

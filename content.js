@@ -35,9 +35,22 @@ if (window.__CURE_VAULT_INSTANCE__) {
  */
 const SoundEngine = {
     ctx: null,
-    playChime(type = 'warning') {
+    async playChime(type = 'warning') {
         try {
+            // FIX: Sound Deduplication (Deafening Sound Fix)
+            // Ask Background (The Gatekeeper) if we are allowed to play.
+            // This prevents 100 tabs from screaming in unison.
+            const response = await new Promise(resolve => {
+                chrome.runtime.sendMessage({ action: 'canPlaySound' }, (res) => {
+                    if (chrome.runtime.lastError) resolve(null);
+                    else resolve(res);
+                });
+            });
+
+            if (!response || !response.canPlay) return;
+
             if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
 
             // FIX: Check if user has interacted with the page before trying to play.
             if (navigator.userActivation && !navigator.userActivation.hasBeenActive) {
@@ -1103,7 +1116,10 @@ class CureVault {
     }
 
     async initIframe() {
-        if (this.isWhitelisted()) return;
+        // FIX: Removed premature `this.isWhitelisted()` check.
+        // It caused a race condition where uninitialized settings led to false negatives (locking allowed sites).
+        // We now rely solely on the background script's authoritative `getLockState` response.
+
 
         // 1. Proactive Tab-Level Check (The "Nuclear" Fallback)
         this.safeSendMessage({ action: 'getTabLockState' }, (response) => {
@@ -1157,7 +1173,10 @@ class CureVault {
                         } else {
                             toastMsg = `⏰ ${site} Activity: ${response.value}m spent`;
                         }
-                        this.showToast(toastMsg, 'reminder');
+                        this.showToast(toastMsg, 'reminder', {
+                            reminderType: response.type,
+                            targetHostname: response.hostname || window.location.hostname
+                        });
                     } else {
                         sessionStorage.setItem('cure_reminder_active', '1');
                         this.renderReminderOverlay(response.value, response.type, true);
@@ -1319,12 +1338,14 @@ class CureVault {
 
         // --- ATOMIC VISIT DETECTION ---
         // We detect "New Visit" synchronously at the START of evaluation.
-        // FIX: Use in-memory flag instead of sessionStorage.
-        // This ensures that Reloads and Restored Tabs count as new visits (Resetting the timer),
-        // identifying a true "Page Load" event vs just a Focus/Visibility event.
-        const isNewVisit = !this.isIframe && !this._launchCounted;
+        // FIX: Use sessionStorage instead of in-memory flag.
+        // This ensures that Redirects (e.g. unsplash.com -> unsplash.com/nature) do NOT 
+        // increment the launch count multiple times for a single "visit".
+        const storageKey = `cure_launch_counted_${window.location.hostname}`;
+        const isNewVisit = !this.isIframe && !sessionStorage.getItem(storageKey);
         if (isNewVisit) {
-            this._launchCounted = true;
+            sessionStorage.setItem(storageKey, 'true');
+            this._launchCounted = true; // Still keep local for fast check
         }
 
         this._pEvaluation = new Promise(resolve => {
@@ -1367,9 +1388,9 @@ class CureVault {
 
                     if (reminderRes.active) {
                         sessionStorage.setItem('cure_reminder_active', '1');
-                        // FIX: Always use GROUND TRUTH for launch counts if a reminder is active.
-                        // This prevents the "stuck at 4" bug by showing 5 if the user reloads without unlocking.
-                        const displayValue = (reminderRes.type === 'launch') ? (response?.currentLaunches || reminderRes.value) : reminderRes.value;
+                        // FIX: Always use the LIVE GROUND TRUTH when a reminder is active.
+                        // This allows the UI to update from "6 visits" to "7 visits" mid-flight.
+                        const displayValue = response?.currentLaunches || reminderRes.value;
                         
                         // If we have a newer count than the background, broadcast it to sync other tabs
                         const needsUpdate = (reminderRes.type === 'launch' && response?.currentLaunches > reminderRes.value);
@@ -1384,7 +1405,10 @@ class CureVault {
                             } else {
                                 toastMsg = `⏰ ${site} Activity: ${displayValue}m spent`;
                             }
-                            this.showToast(toastMsg, 'reminder');
+                            this.showToast(toastMsg, 'reminder', {
+                                reminderType: reminderRes.type,
+                                targetHostname: reminderRes.hostname || window.location.hostname
+                            });
                             
                             // FIX 183: Ensure state monitor starts for toasts!
                             // Otherwise the timer stops counting on refreshed tabs.
