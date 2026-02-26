@@ -775,33 +775,56 @@ class CureVault {
         // FIX 129: Extended to handle iframes properly
         if (request.action === 'dismissReminderOverlay') {
             const isGlobal = request.hostname === 'global' || request.hostname === 'all';
+            const isClearAll = request.hostname === 'all';
+
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
-                sessionStorage.removeItem('cure_reminder_active');
+                // Only clear the active flag if it's the specific type being dismissed or if clearing ALL
+                if (isClearAll || !request.type) {
+                    sessionStorage.removeItem('cure_reminder_active');
+                }
                 
-                // FIX 129: Stop media enforcement for iframes
+                // TARGETED Toast Removal
+                const root = this.shadowRoot;
+                if (root) {
+                    let selector = '[id^="cure-popout-notification"]';
+                    if (!isClearAll && request.type) {
+                        // Target specific ID (e.g., cure-popout-notification-browser)
+                        selector = `[id="cure-popout-notification-${request.type}"]`;
+                    }
+                    
+                    const toasts = root.querySelectorAll(selector);
+                    toasts.forEach(t => {
+                        t.style.opacity = '0';
+                        setTimeout(() => { 
+                            if (t.parentElement) t.remove(); 
+                            this.repositionToasts();
+                        }, 300);
+                    });
+                }
+
+                // FIX: Update silence guard so heartbeats don't re-trigger after remote dismissal
+                if (request.type) {
+                    this._dismissedToasts = this._dismissedToasts || {};
+                    this._dismissedToasts[request.type] = Date.now();
+                }
+
+                // If it's a specific type, only clear that type from the local queue
+                if (!isClearAll && request.type) {
+                    this.interventionQueue = (this.interventionQueue || []).filter(item => item.type !== request.type);
+                    this.queueSnapshot = (this.queueSnapshot || []).filter(item => item.type !== request.type);
+                } else if (isClearAll) {
+                    this.interventionQueue = [];
+                    this.queueSnapshot = [];
+                }
+
                 MediaController.stopEnforcement();
-                
                 this.removeOverlay();
                 document.body.style.overflow = '';
 
-                // FIX 171: Also remove any active toast
-                const root = this.shadowRoot;
-                if (root) {
-                    const toast = root.getElementById('cure-popout-notification');
-                    if (toast) {
-                        toast.style.opacity = '0';
-                        setTimeout(() => { if (toast.parentElement) toast.remove(); }, 300);
-                    }
-                }
-
-                // FIX 169/191/192: Force save timer so iframes/tabs sync to the correct current time.
-                // CRITICAL (Fix 191): Only the tab the user actually Interacted with (the initiator) 
-                // should save its timer. Passive tabs will follow via handleStorageChange logic.
                 if (!request.initiatorInstanceId || request.initiatorInstanceId === this.instanceId) {
                     this.saveTimer();
                 }
                 
-                // FIX 168: Restart monitor in iframes too so the pill updates!
                 this.stateMonitor();
             }
             return;

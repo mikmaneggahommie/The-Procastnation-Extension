@@ -458,6 +458,7 @@ function broadcastReminderStateCentral(payload, excludeTabId = null) {
                 chrome.tabs.sendMessage(tabId, {
                     action: 'dismissReminderOverlay',
                     hostname: (hostname === 'all') ? 'all' : (isGlobal ? 'global' : cleanedHostname),
+                    type,
                     initiatorInstanceId: payload.initiatorInstanceId
                 }, options).catch(() => {});
             }
