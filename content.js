@@ -297,6 +297,11 @@ class CureVault {
         this._pEvaluation = null; // Concurrency guard for trigger checks
         this._pendingReEval = false; // Queue for follow-up evaluations
         
+        // --- QUEUE & STACKING (Restored Baseline) ---
+        this.interventionQueue = [];
+        this.queueSnapshot = [];
+        this._dismissedToasts = {};
+
         // FIX 86: Track iframe state for conditional logic
         // FIX 103: Simple Check. ancestorOrigins caused false positives on main sites.
         this.isIframe = (window.self !== window.top);
@@ -478,16 +483,17 @@ class CureVault {
     // 2. Must be called explicitly in renderTypingLock.
     // =========================================================================
     dismissToast() {
-        // FIX: Clear local reset flags when user acknowledges/starts over.
         sessionStorage.removeItem(`cure_needs_reset_${window.location.hostname}`);
         sessionStorage.removeItem('cure_needs_reset');
         
         if (!this.shadowRoot) return;
-        const popout = this.shadowRoot.getElementById('cure-popout-notification');
-        if (popout) {
-            popout.style.opacity = '0';
-            setTimeout(() => { if (popout.parentElement) popout.remove(); }, 300);
-        }
+        const root = this.shadowRoot;
+        const toasts = root.querySelectorAll('[id^="cure-popout-notification"]');
+        toasts.forEach(t => {
+            t.style.opacity = '0';
+            setTimeout(() => { if (t.parentElement) t.remove(); }, 300);
+        });
+        setTimeout(() => this.repositionToasts(), 350);
     }
 
     // =========================================================================
@@ -743,34 +749,24 @@ class CureVault {
             return;
         }
 
-        // FIX 187: Consolidated reminder handler
+        // FIX 187: Consolidated reminder handler with QUEUE support
         if (request.action === 'forceReminderOverlay' || request.action === 'forceReminderToast') {
-            // FIX: Guard against stale broadcasts arriving after a settings change.
-            // When settings change, the old repeating reminder's 'show:true' broadcast can
-            // arrive AFTER the 'dismiss' broadcast due to async chrome.tabs.query racing.
-            if (this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000)) {
-                console.debug('[Cure] Ignoring stale reminder broadcast during settings transition.');
-                return;
-            }
+            if (this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000)) return;
 
             const isGlobal = request.hostname === 'global';
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
-                const rStyle = request.reminderStyle || (request.action === 'forceReminderToast' ? 'toast' : 'overlay');
-                const isActive = sessionStorage.getItem('cure_reminder_active') === '1';
-
-                // For toasts, we ALWAYS proceed so we can update the heartbeat text.
-                // For overlays, we only proceed if not already showing (prevents flickering).
-                if (rStyle === 'toast' || !isActive) {
-                    sessionStorage.setItem('cure_reminder_active', '1');
-                    
-                    // Sync threshold state to prevent redundant local triggers
-                    if (request.type === 'time' && request.value > 0) {
-                        this._lastReminderThreshold = request.value;
-                        this._lastHeartbeatMinute = request.value;
-                    }
-
-                    this.renderReminderOverlay(request.value, request.type, true, rStyle, request.hostname);
-                }
+                // ADD TO QUEUE instead of immediate render
+                const reminderStyle = request.reminderStyle || (request.action === 'forceReminderToast' ? 'toast' : 'overlay');
+                this.interventionQueue = (this.interventionQueue || []).filter(item => item.type !== request.type);
+                this.interventionQueue.push({
+                    type: request.type,
+                    value: request.value,
+                    style: reminderStyle,
+                    hostname: request.hostname,
+                    ts: Date.now()
+                });
+                
+                this.processInterventionQueue();
             }
             return;
         }
@@ -2132,6 +2128,79 @@ class CureVault {
      * Reactive: Dynamically adapts to whitelist/settings changes without restarting.
      */
     // FIX 139: Smart Media Check
+    processInterventionQueue() {
+        if (!this.interventionQueue || this.interventionQueue.length === 0) return;
+
+        // BUGGY BASELINE: The one that caused the "dropped toasts" issue
+        this.queueSnapshot = [...this.interventionQueue];
+        
+        // Handle Toast-style reminders
+        this.updateToasts();
+
+        // Handle Overlays (if any)
+        const overlayReminders = this.queueSnapshot.filter(r => r.style === 'overlay');
+        if (overlayReminders.length > 0) {
+            const highest = overlayReminders.sort((a,b) => b.value - a.value)[0];
+            this.renderReminderOverlay(highest.value, highest.type, true, 'overlay', highest.hostname);
+        }
+
+        // THE BUG: Clearing too early causes simultaneous heartbeats to wipe the queueSnapshot
+        this.clearQueue(); 
+    }
+
+    clearQueue() {
+        this.interventionQueue = [];
+        this.queueSnapshot = []; 
+    }
+
+    updateToasts() {
+        const root = this.ensureShadow();
+        if (!root) return;
+
+        const reminders = (this.queueSnapshot || []).filter(r => r.style === 'toast');
+        if (reminders.length === 0) return;
+
+        reminders.forEach(r => {
+            // Dismissal Guard (5s safety)
+            const lastDismissed = this._dismissedToasts ? this._dismissedToasts[r.type] : 0;
+            if (lastDismissed && (Date.now() - lastDismissed < 5000)) return;
+
+            let msg = '';
+            if (r.type === 'browser') {
+                msg = `🖥️ Browser Screen Time: ${r.value}m spent`;
+            } else if (r.type === 'launch') {
+                msg = `🚀 Visit Limit: ${r.value} visits`;
+            } else {
+                // Match renderReminderOverlay exactly: ⏰ Site Activity: Xm spent
+                const site = this.getSiteName();
+                msg = `⏰ ${site} Activity: ${r.value}m spent`;
+            }
+            
+            this.showToast(msg, 'reminder', { 
+                rType: r.type, 
+                isStacked: true,
+                persist: true 
+            });
+        });
+    }
+
+    repositionToasts() {
+        const root = this.shadowRoot;
+        if (!root) return;
+
+        const toasts = Array.from(root.querySelectorAll('[id^="cure-popout-notification-"]'))
+            .filter(t => t.style.opacity !== '0');
+        
+        // Sort by DOM order/timestamp? Let's just use existing order
+        let currentOffset = this.isIframe ? 15 : 35;
+        const spacing = this.isIframe ? 8 : 12;
+
+        toasts.forEach((toast, index) => {
+            toast.style.bottom = `${currentOffset}px`;
+            currentOffset += toast.offsetHeight + spacing;
+        });
+    }
+
     checkIfPlaying() {
         const media = document.querySelectorAll('video, audio');
         for (const m of media) {
@@ -2481,17 +2550,17 @@ class CureVault {
     // =========================================================================
     /* SURGICAL FEATURE: TOAST_UI (The Global Notification System) */
     showToast(msg, type = 'info', options = {}) {
-        // FIX 115: Removed isIframe check. 
         const root = this.ensureShadow();
-        if (!root) return; // FIX: Null guard for early call or missing body
+        if (!root) return; 
 
-        // FIX 174: Reuse existing popout to prevent flickering/re-animation
-        const existing = root.getElementById('cure-popout-notification');
+        // UNIQUE ID: Restored to allow stacking
+        const toastId = options.isStacked ? `cure-popout-notification-${options.rType}` : 'cure-popout-notification';
+        
+        const existing = root.getElementById(toastId);
         if (existing && existing.dataset.type === type) {
             const msgSpan = existing.querySelector('span');
             if (msgSpan) {
                 msgSpan.textContent = msg;
-                // FIX 189: Force visibility and pulse effect to indicate update
                 existing.style.opacity = '1';
                 existing.style.transform = 'translateX(-50%) scale(1.05)';
                 setTimeout(() => { existing.style.transform = 'translateX(-50%) scale(1)'; }, 150);
@@ -2501,10 +2570,10 @@ class CureVault {
         if (existing) existing.remove();
 
         const popout = document.createElement('div');
-        popout.id = 'cure-popout-notification';
+        popout.id = toastId;
         popout.dataset.type = type;
 
-        // Inject Keyframes for Pulse INSIDE Shadow Root for isolation success
+        // Inject Keyframes
         if (!root.getElementById('cure-pulse-style-final')) {
             const style = document.createElement('style');
             style.id = 'cure-pulse-style-final';
@@ -2523,7 +2592,7 @@ class CureVault {
             root.appendChild(style);
         }
 
-        let bgColor = '#007AFF'; // info
+        let bgColor = '#007AFF'; 
         let animation = 'none';
 
         if (type === 'warning' || type === 'error') {
@@ -2532,8 +2601,6 @@ class CureVault {
         } else if (type === 'reminder') {
             bgColor = '#1D1D1F';
             animation = 'cure-pulse-soft 3s infinite';
-        } else if (type === 'success') {
-            bgColor = '#34C759';
         }
 
         const bottomOffset = this.isIframe ? '15px' : '35px';
@@ -2559,14 +2626,12 @@ class CureVault {
             align-items: center;
             gap: ${gap};
             opacity: 0; 
-            transition: opacity 0.3s ease, transform 0.3s ease;
+            transition: opacity 0.3s ease, transform 0.3s ease, bottom 0.3s ease;
             white-space: nowrap;
             pointer-events: auto;
             animation: ${animation};
         `;
 
-
-        // Inner HTML replaced with DOM construction for Trusted Types (YouTube Fix)
         const msgSpan = document.createElement('span');
         msgSpan.textContent = msg;
         popout.appendChild(msgSpan);
@@ -2577,24 +2642,22 @@ class CureVault {
         const closeFontSize = this.isIframe ? '10px' : '12px';
         closeBtn.style.cssText = `background:rgba(255,255,255,0.2); border:none; width:${closeSize}; height:${closeSize}; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:${closeFontSize}; flex-shrink:0;`;
         
-        // Handle Close Button Click
-        // FIX 171: Broadcast dismissal so all tabs/iframes remove the toast
         closeBtn.onclick = () => {
             popout.style.opacity = '0';
-            setTimeout(() => { if (popout.parentElement) popout.remove(); }, 300);
+            setTimeout(() => { 
+                if (popout.parentElement) popout.remove(); 
+                this.repositionToasts();
+            }, 300);
             
-            // If this is a reminder toast, broadcast dismissal to all tabs
             if (type === 'reminder') {
-                sessionStorage.removeItem('cure_reminder_active');
-                // Set heartbeat to current minute to prevent instant re-trigger
-                this._lastHeartbeatMinute = Math.floor(this.activeSeconds / 60);
-
-                const rType = options.reminderType || 'time';
+                const rType = options.rType || 'time';
                 const isGlobal = (rType === 'browser');
+                this._dismissedToasts[rType] = Date.now();
+                sessionStorage.removeItem('cure_reminder_active');
 
                 this.safeSendMessage({
                     action: 'broadcastReminderState',
-                    hostname: isGlobal ? 'global' : (options.targetHostname || window.location.hostname),
+                    hostname: isGlobal ? 'global' : window.location.hostname,
                     show: false,
                     type: rType,
                     reminderStyle: 'toast',
@@ -2604,19 +2667,23 @@ class CureVault {
         };
         popout.appendChild(closeBtn);
 
-        // Fix 113: Always append as last child
         root.appendChild(popout);
-        
-        // Animate in
-        setTimeout(() => {
-            popout.style.opacity = '1';
+        setTimeout(() => { 
+            popout.style.opacity = '1'; 
+            this.repositionToasts();
         }, 50);
 
-        // FIX: REMOVE AUTO-DISMISS. 
-        // User requested it to NOT disappear automatically ("As if I pressed X").
-        // It stays until they dismiss it or start typing (which calls dismissToast).
-
-
+        if (options.persist !== true) {
+            setTimeout(() => {
+                if (popout.parentElement) {
+                    popout.style.opacity = '0';
+                    setTimeout(() => { 
+                        if (popout.parentElement) popout.remove(); 
+                        this.repositionToasts();
+                    }, 300);
+                }
+            }, options.duration || TIMERS.TOAST_DURATION_MS);
+        }
     }
 
 
@@ -3148,7 +3215,7 @@ class CureVault {
         let continueText = "Continue Browsing (Unlock Site)";
 
         if (type === 'browser') {
-            emoji = "⌛";
+            emoji = "🖥️";
             title = "Daily Screen Time";
             timeLabel = `${value}`;
             timeUnit = 'minutes total';
