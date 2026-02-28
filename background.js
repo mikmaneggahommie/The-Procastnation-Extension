@@ -27,13 +27,20 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // Helper: Persist Snapshots
 const saveSnapshots = () => chrome.storage.local.set({ lockSnapshots: g_lockSnapshots });
 
-// FIX 129/201: Persistent Reminder State
+let _reminderSnapshotTimeout = null;
+
 const saveReminderSnapshots = () => {
-    const serializedReminders = Array.from(g_activeReminders.entries());
-    chrome.storage.local.set({ 
-        activeReminders: serializedReminders,
-        activeGlobalReminder: g_activeGlobalReminder
-    });
+    if (_reminderSnapshotTimeout) {
+        clearTimeout(_reminderSnapshotTimeout);
+    }
+    _reminderSnapshotTimeout = setTimeout(() => {
+        const serializedReminders = Array.from(g_activeReminders.entries());
+        chrome.storage.local.set({ 
+            activeReminders: serializedReminders,
+            activeGlobalReminder: g_activeGlobalReminder
+        });
+        _reminderSnapshotTimeout = null;
+    }, 500);
 };
 
 const loadReminderSnapshots = () => {
@@ -158,56 +165,61 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
              // Actually, the trackLaunch reset is authoritative.
         }
         
-        if (!state) return;
+        if (state) {
+            const effectiveSecs = sittingSeconds - state.baselineSecs;
+            const now = Date.now();
+            const dismissalCooldown = 15000; // 15s silence window (Short enough for 1m testers)
 
-        const effectiveSecs = sittingSeconds - state.baselineSecs;
-        const currentMins = Math.floor(sittingSeconds / 60);
-
-        if (state.rType === 'once') {
-            if (!state.active && !state.onceTriggered && effectiveSecs >= rInt) {
-                state.onceTriggered = true;
-                broadcastReminderStateCentral({
-                    hostname: hostname,
-                    show: true,
-                    value: currentMins, 
-                    type: 'time',
-                    reminderStyle: rStyle,
-                    rMode: 'once'
-                });
-            } else if (state.active && rStyle === 'toast' && currentMins > (state.lastHeartbeat || 0)) {
-                state.lastHeartbeat = currentMins;
-                broadcastReminderStateCentral({
-                    hostname: hostname,
-                    show: true,
-                    value: currentMins,
-                    type: 'time',
-                    reminderStyle: 'toast',
-                    rMode: 'once'
-                });
-            }
-        } else {
-            // REPEATING
-            const currentOffset = Math.floor(effectiveSecs / rInt) * rInt;
-            if (currentOffset > 0 && currentOffset > state.lastTriggeredOffset) {
-                state.lastTriggeredOffset = currentOffset;
-                broadcastReminderStateCentral({
-                    hostname: hostname,
-                    show: true,
-                    value: currentMins,
-                    type: 'time',
-                    reminderStyle: rStyle,
-                    rMode: 'repeating'
-                });
-            } else if (state.active && rStyle === 'toast' && currentMins > (state.lastHeartbeat || 0)) {
-                state.lastHeartbeat = currentMins;
-                broadcastReminderStateCentral({
-                    hostname: hostname,
-                    show: true,
-                    value: currentMins,
-                    type: 'time',
-                    reminderStyle: 'toast',
-                    rMode: 'repeating'
-                });
+            if (state.rType === 'once') {
+                const recentlyDismissed = state.lastDismissedTime && (now - state.lastDismissedTime < dismissalCooldown);
+                if (!state.active && !state.onceTriggered && effectiveSecs >= rInt && !recentlyDismissed) {
+                    state.onceTriggered = true;
+                    state.active = true; // FIX: Ensure state is active for heartbeats
+                    broadcastReminderStateCentral({
+                        hostname: hostname,
+                        show: true,
+                        value: mins, 
+                        type: 'time',
+                        reminderStyle: rStyle,
+                        rMode: 'once'
+                    });
+                } else if (state.active && rStyle === 'toast' && mins > (state.lastHeartbeat || 0) && !recentlyDismissed) {
+                    state.lastHeartbeat = mins;
+                    broadcastReminderStateCentral({
+                        hostname: hostname,
+                        show: true,
+                        value: mins,
+                        type: 'time',
+                        reminderStyle: 'toast',
+                        rMode: 'once'
+                    });
+                }
+            } else {
+                // REPEATING
+                const recentlyDismissed = state.lastDismissedTime && (now - state.lastDismissedTime < dismissalCooldown);
+                const currentOffset = Math.floor(effectiveSecs / rInt) * rInt;
+                if (currentOffset > 0 && currentOffset > state.lastTriggeredOffset && !recentlyDismissed) {
+                    state.lastTriggeredOffset = currentOffset;
+                    state.active = true; // FIX: Ensure state is active for heartbeats
+                    broadcastReminderStateCentral({
+                        hostname: hostname,
+                        show: true,
+                        value: mins,
+                        type: 'time',
+                        reminderStyle: rStyle,
+                        rMode: 'repeating'
+                    });
+                } else if (state.active && rStyle === 'toast' && mins > (state.lastHeartbeat || 0) && !recentlyDismissed) {
+                    state.lastHeartbeat = mins;
+                    broadcastReminderStateCentral({
+                        hostname: hostname,
+                        show: true,
+                        value: mins,
+                        type: 'time',
+                        reminderStyle: 'toast',
+                        rMode: 'repeating'
+                    });
+                }
             }
         }
     }
@@ -219,9 +231,12 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
         const rType = g_settingsCache.reminderBrowserType || 'once';
         const limitGlobalSecs = (rTriggers.browserLimit.value || 120) * 60;
         const configHash = `global_${rType}_${limitGlobalSecs}`;
+        const now = Date.now();
+        const dismissalCooldown = 15000;
         
         if (!g_activeGlobalReminder || g_activeGlobalReminder.configHash !== configHash) {
             const wasActive = g_activeGlobalReminder && g_activeGlobalReminder.active;
+            const lastDismissed = g_activeGlobalReminder ? g_activeGlobalReminder.lastDismissedTime : 0;
             g_activeGlobalReminder = {
                 configHash,
                 baselineSecs: browserSeconds, // PRECISION: Store raw seconds
@@ -230,7 +245,8 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
                 rMode: rType,
                 type: 'browser',
                 reminderStyle: rStyle,
-                active: false 
+                active: false,
+                lastDismissedTime: lastDismissed
             };
 
             if (wasActive) {
@@ -239,10 +255,12 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
         }
 
         const effectiveSecs = browserSeconds - g_activeGlobalReminder.baselineSecs;
+        const recentlyDismissed = g_activeGlobalReminder.lastDismissedTime && (now - g_activeGlobalReminder.lastDismissedTime < dismissalCooldown);
 
         if (g_activeGlobalReminder.rMode === 'once') {
-            if (!g_activeGlobalReminder.active && !g_activeGlobalReminder.onceTriggered && effectiveSecs >= limitGlobalSecs) {
+            if (!g_activeGlobalReminder.active && !g_activeGlobalReminder.onceTriggered && effectiveSecs >= limitGlobalSecs && !recentlyDismissed) {
                 g_activeGlobalReminder.onceTriggered = true;
+                g_activeGlobalReminder.active = true; // FIX: Ensure active for heartbeats
                 broadcastReminderStateCentral({
                     hostname: 'global',
                     show: true,
@@ -251,7 +269,7 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
                     reminderStyle: rStyle,
                     rMode: 'once'
                 });
-            } else if (g_activeGlobalReminder.active && rStyle === 'toast' && minsSpent > (g_activeGlobalReminder.lastHeartbeat || 0)) {
+            } else if (g_activeGlobalReminder.active && rStyle === 'toast' && minsSpent > (g_activeGlobalReminder.lastHeartbeat || 0) && !recentlyDismissed) {
                 g_activeGlobalReminder.lastHeartbeat = minsSpent;
                 broadcastReminderStateCentral({
                     hostname: 'global',
@@ -264,8 +282,9 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
             }
         } else {
             // REPEATING
+            const recentlyDismissed = g_activeGlobalReminder.lastDismissedTime && (now - g_activeGlobalReminder.lastDismissedTime < dismissalCooldown);
             const currentOffset = Math.floor(effectiveSecs / limitGlobalSecs) * limitGlobalSecs;
-            if (currentOffset > 0 && currentOffset > g_activeGlobalReminder.lastTriggeredOffset) {
+            if (currentOffset > 0 && currentOffset > g_activeGlobalReminder.lastTriggeredOffset && !recentlyDismissed) {
                 g_activeGlobalReminder.lastTriggeredOffset = currentOffset;
                 g_activeGlobalReminder.active = true; // Ensure re-activated on new bucket
                 broadcastReminderStateCentral({
@@ -276,7 +295,7 @@ function evaluateReminders(stats, hostname, sittingSeconds, now, source = 'usage
                     reminderStyle: rStyle,
                     rMode: 'repeating'
                 });
-            } else if (g_activeGlobalReminder.active && rStyle === 'toast' && minsSpent > (g_activeGlobalReminder.lastHeartbeat || 0)) {
+            } else if (g_activeGlobalReminder.active && rStyle === 'toast' && minsSpent > (g_activeGlobalReminder.lastHeartbeat || 0) && !recentlyDismissed) {
                 g_activeGlobalReminder.lastHeartbeat = minsSpent;
                 broadcastReminderStateCentral({
                     hostname: 'global',
@@ -1642,50 +1661,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         (async () => {
             await ensureRestored();
             const hostname = cleanHost(request.hostname);
-            const globalState = g_activeGlobalReminder;
-            
-            // Priority 1: Global Reminder (Active Browser-wide)
-            if (globalState && globalState.active) {
-                return sendResponse({ 
-                    active: true, 
-                    value: globalState.value, 
-                    type: globalState.type, 
-                    isGlobal: true, 
-                    reminderStyle: globalState.reminderStyle 
+            const reminders = [];
+
+            // 1. Global Reminder
+            if (g_activeGlobalReminder && g_activeGlobalReminder.active) {
+                reminders.push({
+                    active: true,
+                    value: g_activeGlobalReminder.value,
+                    type: g_activeGlobalReminder.type,
+                    isGlobal: true,
+                    reminderStyle: g_activeGlobalReminder.activeStyle || g_activeGlobalReminder.reminderStyle
                 });
             }
 
-            // Priority 2: Site Activity (Time) Reminder
-            const timeKey = `${hostname}_time`;
-            const timeState = g_activeReminders.get(timeKey);
-            if (timeState && timeState.active) {
-                return sendResponse({ 
-                    active: true, 
-                    value: timeState.value, 
-                    type: 'time', 
-                    isGlobal: false, 
-                    hostname: hostname, 
-                    reminderStyle: timeState.reminderStyle,
-                    lastDismissedTime: timeState.lastDismissedTime
-                });
+            // 2. Site Specific Reminders
+            for (const [key, state] of g_activeReminders.entries()) {
+                if (key.startsWith(`${hostname}_`) && state.active) {
+                    reminders.push({
+                        active: true,
+                        value: state.value,
+                        type: state.type,
+                        isGlobal: false,
+                        hostname: hostname,
+                        reminderStyle: state.reminderStyle,
+                        lastDismissedTime: state.lastDismissedTime
+                    });
+                }
             }
 
-            // Priority 3: Launch Limit Reminder
-            const launchKey = `${hostname}_launch`;
-            const launchState = g_activeReminders.get(launchKey);
-            if (launchState && launchState.active) {
-                return sendResponse({ 
-                    active: true, 
-                    value: launchState.value, 
-                    type: 'launch', 
-                    isGlobal: false, 
-                    hostname: hostname, 
-                    reminderStyle: launchState.reminderStyle,
-                    lastDismissedTime: launchState.lastDismissedTime
-                });
+            if (reminders.length > 0) {
+                sendResponse({ active: true, activeReminders: reminders });
+            } else {
+                sendResponse({ active: false });
             }
-
-            sendResponse({ active: false });
         })();
         return true;
     }
@@ -2043,3 +2051,61 @@ async function handleTabAbandonment(tabId, newUrl) {
         }
     }
 }
+
+// FIX: Global Heartbeat Monitoring
+// Ensures that active toasts on background tabs receive "stay alive" heartbeats
+// even when the user is on a whitelisted site where no tab-usage is recorded.
+setInterval(async () => {
+    if (!g_settingsCache || !g_reminderStateRestored) return;
+    
+    // Evaluate Global Reminder first (Browser Screen Time)
+    const stats = await getDailyStats();
+    const now = Date.now();
+    
+    // We run a "Synthetic" evaluation using current stats for all active reminders
+    // This allows heartbeats to fire even if no tab-usage message is triggering them.
+    
+    // 1. Global Browser Heartbeat
+    if (g_activeGlobalReminder && g_activeGlobalReminder.active) {
+        const browserSeconds = (stats.browserUsageHistory || []).reduce((sum, entry) => sum + entry.dur, 0);
+        const minsSpent = Math.floor(browserSeconds / 60);
+        
+        // Only broadcast if time has actually moved or if we need to freshen the heartbeat
+        if (minsSpent >= (g_activeGlobalReminder.lastHeartbeat || 0)) {
+            g_activeGlobalReminder.lastHeartbeat = minsSpent;
+            broadcastReminderStateCentral({
+                hostname: 'global',
+                show: true,
+                value: minsSpent,
+                type: 'browser',
+                reminderStyle: g_activeGlobalReminder.reminderStyle || 'toast',
+                rMode: g_activeGlobalReminder.rMode
+            });
+        }
+    }
+
+    // 2. Site Specific Heartbeats for all sites with an active reminder
+    for (const [key, state] of g_activeReminders.entries()) {
+        if (state.active) {
+            const host = key.split('_')[0];
+            const siteStats = stats.sites[host];
+            if (siteStats) {
+                const dailySiteTotal = (siteStats.usageHistory || []).reduce((acc, c) => acc + (c.dur || 0), 0);
+                const mins = Math.floor(dailySiteTotal / 60);
+                
+                // Only broadcast if value changed or every minute
+                if (mins >= (state.lastHeartbeat || 0)) {
+                   state.lastHeartbeat = mins;
+                   broadcastReminderStateCentral({
+                       hostname: host,
+                       show: true,
+                       value: mins,
+                       type: 'time',
+                       reminderStyle: state.reminderStyle || 'toast',
+                       rMode: state.rType
+                   });
+                }
+            }
+        }
+    }
+}, 30000); // 30s heartbeat is plenty to keep a 600s/10m pruning timer fresh

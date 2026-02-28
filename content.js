@@ -246,7 +246,7 @@ class CureVault {
         this.browserSeconds = 0; // Total usage TODAY
         this.activeSeconds = 0; // Current sitting duration
 
-        this._lastResetToastShown = false; // Fix 65: Track if we showed reset toast
+
         this.instanceId = Math.random().toString(36).substring(2, 11); // FIX 89: Identify this tab instance
         this.stateInitialized = false;
 
@@ -263,9 +263,7 @@ class CureVault {
         this.sessionBaseSeconds = 0; // Time spent before the lock
         this.originalRewardSeconds = 0; // Total reward granted
         
-        // FIX 185: Threshold Tracking
-        this._lastReminderThreshold = 0;
-        this._lastHeartbeatMinute = 0;
+
         
         this.lastLockMode = 'up'; // Track mode changes for transitions
 
@@ -287,32 +285,41 @@ class CureVault {
         this.overlayId = 'cure-overlay-id';
         this.pillId = 'cure-pill';
         this.shadowHostId = 'cure-root'; // ID used by ensureShadow()
+        // UI State
+        this.currentChallengeText = null; 
+        this.activeIntervention = null;
         this.shadowHost = null;
         this.shadowRoot = null;
+        this._settingsChangedAt = Date.now();
         this._resetToastPending = false; 
-        this._launchCounted = false; // FIX: In-memory launch tracking
         this._toastDebounce = false;
         this._lastDecisionKey = null; // Stability guard for UI re-renders
         this.lastRenderedReason = null; // Fix: Prevent rapid-fire re-rendering
         this._pEvaluation = null; // Concurrency guard for trigger checks
         this._pendingReEval = false; // Queue for follow-up evaluations
         
-        // --- QUEUE & STACKING (Restored Baseline) ---
-        this.interventionQueue = [];
-        this.queueSnapshot = [];
+        // --- TOAST STATE ---
+        this._activeReminders = new Map();
         this._dismissedToasts = {};
+        this._toastBatchPending = false;
 
         // FIX 86: Track iframe state for conditional logic
         // FIX 103: Simple Check. ancestorOrigins caused false positives on main sites.
         this.isIframe = (window.self !== window.top);
 
-        this.handleUpdate = this.handleUpdate.bind(this);
-        this.boundCleanup = this.cleanup.bind(this);
-        this.processPendingToasts = this.processPendingToasts.bind(this);
+        // BIND HARD CONTEXT (Prevents "this" loss in async callbacks)
+        this.checkAnyTrigger = this.checkAnyTrigger.bind(this);
+        this.stateHardLock = this.stateHardLock.bind(this);
+        this.handleChallengeBeaten = this.handleChallengeBeaten.bind(this);
+        this.syncDailyStats = this.syncDailyStats.bind(this);
+        this.updatePill = this.updatePill.bind(this);
+
         this.showToast = this.showToast.bind(this);
         this.dismissToast = this.dismissToast.bind(this);
         
         // FIX: Bound handlers for removeEventListener capability
+        this.handleUpdate = this.handleUpdate.bind(this);
+        this.boundCleanup = this.cleanup.bind(this);
         this.handleFocus = this.handleFocus.bind(this);
         this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
         this.handlePageShow = this.handlePageShow.bind(this);
@@ -377,7 +384,6 @@ class CureVault {
                     if (typeof this.evaluateAllTriggers !== 'function') return;
                     this.evaluateAllTriggers().then(() => {
                         this.forceRefreshUI();
-                        this.processPendingToasts?.();
                     });
                 });
             }
@@ -479,21 +485,31 @@ class CureVault {
     // =========================================================================
     // REGRESSION GUARD: TOAST DISMISSAL LOGIC
     // CRITICAL: Any changes here will break the "Unlock -> Dismiss" flow.
-    // 1. Must handle inline-styled elements (no class checks).
-    // 2. Must be called explicitly in renderTypingLock.
     // =========================================================================
-    dismissToast() {
+    dismissToast(specificType = null) {
         sessionStorage.removeItem(`cure_needs_reset_${window.location.hostname}`);
         sessionStorage.removeItem('cure_needs_reset');
         
         if (!this.shadowRoot) return;
         const root = this.shadowRoot;
-        const toasts = root.querySelectorAll('[id^="cure-popout-notification"]');
+        
+        const toastsContainer = root.getElementById('cure-toast-container');
+        if (!toastsContainer) return;
+
+        let toasts = [];
+        if (specificType) {
+            // Target by toast ID (cure-popout-notification-browser, etc.)
+            const toast = toastsContainer.querySelector(`#cure-popout-notification-${specificType}`);
+            if (toast) toasts = [toast];
+        } else {
+            // Dismiss all toasts
+            toasts = Array.from(toastsContainer.querySelectorAll('.cure-toast'));
+        }
+
         toasts.forEach(t => {
-            t.style.opacity = '0';
+            t.classList.add('removing');
             setTimeout(() => { if (t.parentElement) t.remove(); }, 300);
         });
-        setTimeout(() => this.repositionToasts(), 350);
     }
 
     // =========================================================================
@@ -536,13 +552,7 @@ class CureVault {
     }
 
 
-    processPendingToasts() {
-        if (!this.isContextValid()) return;
-        if (this.isIframe) return; // FIX 86: Never show toasts in iframes
-        
-        // Fix 90: Local reset logic moved to renderTypingLock to prevent async race conditions.
-        // processPendingToasts is now deprecated/empty but kept for interface compatibility.
-    }
+
 
     /**
      * Checks if a challenge was abandoned globally (on another tab).
@@ -749,24 +759,39 @@ class CureVault {
             return;
         }
 
-        // FIX 187: Consolidated reminder handler with QUEUE support
+        // FIX 187: Consolidated reminder handler with CUMULATIVE QUEUE support
         if (request.action === 'forceReminderOverlay' || request.action === 'forceReminderToast') {
             if (this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000)) return;
 
             const isGlobal = request.hostname === 'global';
-            if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
-                // ADD TO QUEUE instead of immediate render
+            const cleanedHost = window.location.hostname.replace(/^www\./, '');
+            
+            if (isGlobal || request.hostname === cleanedHost) {
                 const reminderStyle = request.reminderStyle || (request.action === 'forceReminderToast' ? 'toast' : 'overlay');
-                this.interventionQueue = (this.interventionQueue || []).filter(item => item.type !== request.type);
-                this.interventionQueue.push({
+                
+                // --- CUMULATIVE STATE UPDATE ---
+                const existing = this._activeReminders.get(request.type);
+                this._activeReminders.set(request.type, {
                     type: request.type,
                     value: request.value,
                     style: reminderStyle,
                     hostname: request.hostname,
-                    ts: Date.now()
+                    lastSeen: Date.now(),
+                    lastPlayedValue: existing ? existing.lastPlayedValue : 0
                 });
-                
-                this.processInterventionQueue();
+
+                // Toasts only render on the main frame (not iframes)
+                if (reminderStyle === 'toast' && !this.isIframe) {
+                    if (!this._toastBatchPending) {
+                        this._toastBatchPending = true;
+                        setTimeout(() => {
+                            this._toastBatchPending = false;
+                            this.updateToasts();
+                        }, 50);
+                    }
+                } else if (reminderStyle === 'overlay') {
+                    this.renderReminderOverlay(request.value, request.type, true, 'overlay', request.hostname);
+                }
             }
             return;
         }
@@ -778,54 +803,42 @@ class CureVault {
             const isClearAll = request.hostname === 'all';
 
             if (isGlobal || request.hostname === window.location.hostname.replace(/^www\./, '')) {
+                // Skip if this tab initiated the dismissal (close button already handled it)
+                if (request.initiatorInstanceId && request.initiatorInstanceId === this.instanceId) {
+                    return;
+                }
+
                 // Only clear the active flag if it's the specific type being dismissed or if clearing ALL
                 if (isClearAll || !request.type) {
                     sessionStorage.removeItem('cure_reminder_active');
                 }
                 
                 // TARGETED Toast Removal
-                const root = this.shadowRoot;
-                if (root) {
-                    let selector = '[id^="cure-popout-notification"]';
-                    if (!isClearAll && request.type) {
-                        // Target specific ID (e.g., cure-popout-notification-browser)
-                        selector = `[id="cure-popout-notification-${request.type}"]`;
-                    }
-                    
-                    const toasts = root.querySelectorAll(selector);
-                    toasts.forEach(t => {
-                        t.style.opacity = '0';
-                        setTimeout(() => { 
-                            if (t.parentElement) t.remove(); 
-                            this.repositionToasts();
-                        }, 300);
-                    });
+                if (isClearAll) {
+                    this.dismissToast(); // Remove all
+                } else if (request.type) {
+                    this.dismissToast(request.type);
                 }
 
-                // FIX: Update silence guard so heartbeats don't re-trigger after remote dismissal
+                // Update silence guard
                 if (request.type) {
-                    this._dismissedToasts = this._dismissedToasts || {};
                     this._dismissedToasts[request.type] = Date.now();
                 }
 
-                // If it's a specific type, only clear that type from the local queue
+                // Clear from local reminder map
                 if (!isClearAll && request.type) {
-                    this.interventionQueue = (this.interventionQueue || []).filter(item => item.type !== request.type);
-                    this.queueSnapshot = (this.queueSnapshot || []).filter(item => item.type !== request.type);
+                    this._activeReminders.delete(request.type);
                 } else if (isClearAll) {
-                    this.interventionQueue = [];
-                    this.queueSnapshot = [];
+                    this._activeReminders.clear();
                 }
 
-                MediaController.stopEnforcement();
-                this.removeOverlay();
+                // Only remove overlay if one actually exists (not for toast-only dismissals)
+                const hasOverlay = this.shadowRoot?.getElementById(this.overlayId);
+                if (hasOverlay) {
+                    MediaController.stopEnforcement();
+                    this.removeOverlay();
+                }
                 document.body.style.overflow = '';
-
-                if (!request.initiatorInstanceId || request.initiatorInstanceId === this.instanceId) {
-                    this.saveTimer();
-                }
-                
-                this.stateMonitor();
             }
             return;
         }
@@ -860,7 +873,6 @@ class CureVault {
 
             if (oldType !== newType || oldInt !== newInt || oldEnabled !== newEnabled) {
                 sessionStorage.removeItem('cure_remind_interval_shown');
-                this._lastReminderThreshold = Math.floor(this.activeSeconds / 60);
             }
 
             // FIX: Arm settings-change guard to block stale reminder broadcasts.
@@ -1173,33 +1185,30 @@ class CureVault {
             hostname: window.location.hostname
         }, (response) => {
             if (response) {
-                // FIX 186: Always sync threshold state even if inactive.
-                // This prevents new tabs from re-triggering a dismissal.
-                if (response.value > 0) {
-                    this._lastReminderThreshold = response.value;
-                    this._lastHeartbeatMinute = response.value;
-                }
-
                 if (response.active) {
-                    // FIX 171: If reminderStyle is 'toast', show toast instead of overlay
-                    if (response.reminderStyle === 'toast') {
-                        const site = this.getSiteName();
-                        let toastMsg = '';
-                        if (response.type === 'browser') {
-                            toastMsg = `⌛ Browser Screen Time: ${response.value}m spent`;
-                        } else if (response.type === 'launch') {
-                            toastMsg = `🚀 Visit Limit: ${response.value} visits`;
-                        } else {
-                            toastMsg = `⏰ ${site} Activity: ${response.value}m spent`;
-                        }
-                        this.showToast(toastMsg, 'reminder', {
-                            reminderType: response.type,
-                            targetHostname: response.hostname || window.location.hostname
+                    const activeReminders = response.activeReminders || (response.type ? [response] : []);
+                    activeReminders.forEach(reminder => {
+                        // FIX: Populate local map on load so heartbeats can keep it alive
+                        this._activeReminders.set(reminder.type, {
+                            type: reminder.type,
+                            value: reminder.value,
+                            style: reminder.reminderStyle,
+                            hostname: reminder.hostname || window.location.hostname,
+                            lastSeen: Date.now(),
+                            lastPlayedValue: reminder.value // Don't re-chime on load
                         });
-                    } else {
-                        sessionStorage.setItem('cure_reminder_active', '1');
-                        this.renderReminderOverlay(response.value, response.type, true);
-                    }
+
+                        if (reminder.reminderStyle === 'toast') {
+                            this.showToast(this._buildReminderMsg(reminder.type, reminder.value), 'reminder', {
+                                rType: reminder.type,
+                                targetHostname: reminder.hostname || window.location.hostname,
+                                persist: true
+                            });
+                        } else {
+                            sessionStorage.setItem('cure_reminder_active', '1');
+                            this.renderReminderOverlay(reminder.value, reminder.type, true);
+                        }
+                    });
                 }
             }
         });
@@ -1272,8 +1281,7 @@ class CureVault {
 
         this.stateInitialized = true;
         
-        // Fix 77: Check for reset toasts on cold load
-        this.processPendingToasts?.();
+
 
         // Fix 60: Fetch initial windowed usage stats IMMEDIATELY.
         // Prevents the "10-second loophole" where rolling limits are ignored on fresh load.
@@ -1400,41 +1408,33 @@ class CureVault {
                 if (reminderRes) {
                     // FIX 186: Always sync threshold state even if inactive.
                     // This prevents new tabs from re-triggering a dismissal.
-                    if (reminderRes.value > 0) {
-                         this._lastReminderThreshold = reminderRes.value;
-                         this._lastHeartbeatMinute = reminderRes.value;
-                    }
-
                     if (reminderRes.active) {
-                        sessionStorage.setItem('cure_reminder_active', '1');
-                        // FIX: Always use the LIVE GROUND TRUTH when a reminder is active.
-                        // This allows the UI to update from "6 visits" to "7 visits" mid-flight.
-                        const displayValue = response?.currentLaunches || reminderRes.value;
-                        
-                        // If we have a newer count than the background, broadcast it to sync other tabs
-                        const needsUpdate = (reminderRes.type === 'launch' && response?.currentLaunches > reminderRes.value);
-                        
-                        if (reminderRes.reminderStyle === 'toast') {
-                            const site = this.getSiteName();
-                            let toastMsg = '';
-                            if (reminderRes.type === 'browser') {
-                                toastMsg = `⌛ Browser Screen Time: ${displayValue}m spent`;
-                            } else if (reminderRes.type === 'launch') {
-                                toastMsg = `🚀 Visit Limit: ${displayValue} visits`;
-                            } else {
-                                toastMsg = `⏰ ${site} Activity: ${displayValue}m spent`;
-                            }
-                            this.showToast(toastMsg, 'reminder', {
-                                reminderType: reminderRes.type,
-                                targetHostname: reminderRes.hostname || window.location.hostname
-                            });
+                        const activeList = reminderRes.activeReminders || (reminderRes.type ? [reminderRes] : []);
+                        activeList.forEach(reminder => {
+                            sessionStorage.setItem('cure_reminder_active', '1');
+                            const displayValue = (reminder.type === 'launch' && response?.currentLaunches) ? response.currentLaunches : reminder.value;
                             
-                            // FIX 183: Ensure state monitor starts for toasts!
-                            // Otherwise the timer stops counting on refreshed tabs.
-                            if (!this.isIframe && !this.timerInterval) this.stateMonitor();
-                        } else {
-                            this.renderReminderOverlay(displayValue, reminderRes.type, true);
-                        }
+                            // FIX: Populate local map on load so heartbeats can keep it alive
+                            this._activeReminders.set(reminder.type, {
+                                type: reminder.type,
+                                value: displayValue,
+                                style: reminder.reminderStyle,
+                                hostname: reminder.hostname || window.location.hostname,
+                                lastSeen: Date.now(),
+                                lastPlayedValue: displayValue // Don't re-chime on load
+                            });
+
+                            if (reminder.reminderStyle === 'toast') {
+                                this.showToast(this._buildReminderMsg(reminder.type, displayValue), 'reminder', {
+                                    rType: reminder.type,
+                                    targetHostname: reminder.hostname || window.location.hostname,
+                                    persist: true
+                                });
+                                if (!this.isIframe && !this.timerInterval) this.stateMonitor();
+                            } else {
+                                this.renderReminderOverlay(displayValue, reminder.type, true);
+                            }
+                        });
                         return resolve();
                     }
                 }
@@ -2119,16 +2119,19 @@ class CureVault {
                     this.windowedSiteSeconds = res.siteSeconds;
                     this.windowedBrowserSeconds = res.browserSeconds;
                     // ... reminder sync ...
-                    if (res.reminderValue !== undefined && res.reminderValue >= this._lastReminderThreshold) {
-                        this._lastReminderThreshold = res.reminderValue;
-                        this._lastHeartbeatMinute = res.reminderValue;
+                    if (res.reminderValue !== undefined) {
                         const isActiveLocally = sessionStorage.getItem('cure_reminder_active') === '1';
                         // FIX: Respect settings-change guard here too
                         const inSettingsTransition = this._settingsChangedAt && (Date.now() - this._settingsChangedAt < 2000);
-                        if (res.reminderActive && !isActiveLocally && !inSettingsTransition) {
-                            this.renderReminderOverlay(res.reminderValue, 'time', true);
-                        } else if (!res.reminderActive && isActiveLocally) {
-                            this.removeOverlay();
+                        
+                        // FIX: Only sync OVERLAYS from this heartbeat. Toasts are handled by broadcast messages.
+                        if (res.reminderStyle !== 'toast') {
+                            if (res.reminderActive && !isActiveLocally && !inSettingsTransition) {
+                                this.renderReminderOverlay(res.reminderValue, 'time', true);
+                            } else if (!res.reminderActive && isActiveLocally && this.activeIntervention === 'overlay') {
+                                // ONLY remove if we are actively showing an overlay. Don't touch toasts here.
+                                this.removeOverlay();
+                            }
                         }
                     }
                 }
@@ -2151,77 +2154,49 @@ class CureVault {
      * Reactive: Dynamically adapts to whitelist/settings changes without restarting.
      */
     // FIX 139: Smart Media Check
-    processInterventionQueue() {
-        if (!this.interventionQueue || this.interventionQueue.length === 0) return;
-
-        // BUGGY BASELINE: The one that caused the "dropped toasts" issue
-        this.queueSnapshot = [...this.interventionQueue];
-        
-        // Handle Toast-style reminders
-        this.updateToasts();
-
-        // Handle Overlays (if any)
-        const overlayReminders = this.queueSnapshot.filter(r => r.style === 'overlay');
-        if (overlayReminders.length > 0) {
-            const highest = overlayReminders.sort((a,b) => b.value - a.value)[0];
-            this.renderReminderOverlay(highest.value, highest.type, true, 'overlay', highest.hostname);
-        }
-
-        // THE BUG: Clearing too early causes simultaneous heartbeats to wipe the queueSnapshot
-        this.clearQueue(); 
-    }
-
-    clearQueue() {
-        this.interventionQueue = [];
-        this.queueSnapshot = []; 
+    // --- TOAST HELPER: Single source of truth for reminder messages ---
+    _buildReminderMsg(type, value) {
+        if (type === 'browser') return `🖥️ Daily Screen Time: ${value}m spent`;
+        if (type === 'launch') return `🚀 Visit Limit: ${value} visits`;
+        return `⏰ ${this.getSiteName()} Activity: ${value}m spent`;
     }
 
     updateToasts() {
+        if (this.isIframe) return; // Toasts only on main frame
         const root = this.ensureShadow();
         if (!root) return;
 
-        const reminders = (this.queueSnapshot || []).filter(r => r.style === 'toast');
-        if (reminders.length === 0) return;
+        const now = Date.now();
+        let shouldChime = false;
 
-        reminders.forEach(r => {
-            // Dismissal Guard (5s safety)
-            const lastDismissed = this._dismissedToasts ? this._dismissedToasts[r.type] : 0;
-            if (lastDismissed && (Date.now() - lastDismissed < 5000)) return;
-
-            let msg = '';
-            if (r.type === 'browser') {
-                msg = `🖥️ Browser Screen Time: ${r.value}m spent`;
-            } else if (r.type === 'launch') {
-                msg = `🚀 Visit Limit: ${r.value} visits`;
-            } else {
-                // Match renderReminderOverlay exactly: ⏰ Site Activity: Xm spent
-                const site = this.getSiteName();
-                msg = `⏰ ${site} Activity: ${r.value}m spent`;
+        for (const [type, data] of this._activeReminders.entries()) {
+            // Prune stale reminders (heartbeat missed > 10 minutes — extreme window
+            // to survive tab sleep, throttling and whitelisting)
+            if (now - data.lastSeen > 600000) {
+                this._activeReminders.delete(type);
+                this.dismissToast(type);
+                continue;
             }
-            
-            this.showToast(msg, 'reminder', { 
-                rType: r.type, 
-                isStacked: true,
-                persist: true 
-            });
-        });
-    }
 
-    repositionToasts() {
-        const root = this.shadowRoot;
-        if (!root) return;
+            if (data.style === 'toast') {
+                const lastDismissed = this._dismissedToasts[type] || 0;
+                if (lastDismissed && (now - lastDismissed < 15000)) continue;
 
-        const toasts = Array.from(root.querySelectorAll('[id^="cure-popout-notification-"]'))
-            .filter(t => t.style.opacity !== '0');
-        
-        // Sort by DOM order/timestamp? Let's just use existing order
-        let currentOffset = this.isIframe ? 15 : 35;
-        const spacing = this.isIframe ? 8 : 12;
+                if (data.value > (data.lastPlayedValue || 0)) {
+                    shouldChime = true;
+                    data.lastPlayedValue = data.value;
+                }
 
-        toasts.forEach((toast, index) => {
-            toast.style.bottom = `${currentOffset}px`;
-            currentOffset += toast.offsetHeight + spacing;
-        });
+                this.showToast(this._buildReminderMsg(data.type, data.value), 'reminder', { 
+                    rType: data.type, 
+                    persist: true 
+                });
+            }
+        }
+
+        if (shouldChime && this.settings.soundEnabled !== false) {
+            try { SoundEngine.playChime('warning'); } catch(e) {}
+        }
     }
 
     checkIfPlaying() {
@@ -2563,97 +2538,59 @@ class CureVault {
         this.renderOverlay('locked', reason, forced, phase);
     }
 
-    // --- STYLES (SHADOW DOM) ---
     // =========================================================================
-    // REGRESSION GUARD: VISUAL TOAST RENDERER ("NUCLEAR OPTION")
-    // CRITICAL: Uses inline styles to bypass Shadow DOM isolation issues.
-    // 1. Do NOT move CSS to external file.
-    // 2. Do NOT change z-index (must be max).
-    // 3. Animation keyframes must be injected into Shadow Root.
+    // NEW ARCHITECTURE: NATIVE CSS TOAST RENDERER
+    // 1. No more inline styles. Everything in overlay.css
+    // 2. Flex stack ensures flawless positioning without JS tracking
     // =========================================================================
-    /* SURGICAL FEATURE: TOAST_UI (The Global Notification System) */
     showToast(msg, type = 'info', options = {}) {
         const root = this.ensureShadow();
         if (!root) return; 
 
-        // UNIQUE ID: Restored to allow stacking
-        const toastId = options.isStacked ? `cure-popout-notification-${options.rType}` : 'cure-popout-notification';
+        // 1. Create native CSS container if it doesn't exist
+        let container = root.getElementById('cure-toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'cure-toast-container';
+            container.className = this.isIframe ? 'cure-iframe' : '';
+            root.appendChild(container);
+        }
+
+        const rType = options.rType || 'default';
+        const toastId = `cure-popout-notification-${rType}`;
         
-        const existing = root.getElementById(toastId);
-        if (existing && existing.dataset.type === type) {
+        // If a toast of this rType already exists, update its message and reset its timer
+        const existing = container.querySelector(`#${toastId}`);
+        if (existing) {
             const msgSpan = existing.querySelector('span');
             if (msgSpan) {
                 msgSpan.textContent = msg;
-                existing.style.opacity = '1';
-                existing.style.transform = 'translateX(-50%) scale(1.05)';
-                setTimeout(() => { existing.style.transform = 'translateX(-50%) scale(1)'; }, 150);
+                existing.classList.remove('removing');
+                existing.classList.add('pulse');
+                setTimeout(() => existing.classList.remove('pulse'), 300);
+                
+                // Reset auto-kill timer for existing toast
+                if (existing._autoKillTimeout) {
+                    clearTimeout(existing._autoKillTimeout);
+                }
+                if (options.persist !== true && type !== 'reminder') {
+                    existing._autoKillTimeout = setTimeout(() => {
+                        if (existing.parentElement) {
+                            existing.classList.add('removing');
+                            setTimeout(() => { if (existing.parentElement) existing.remove(); }, 300);
+                        }
+                    }, options.duration || 5000);
+                }
                 return;
             }
         }
-        if (existing) existing.remove();
 
+        // 3. Create the toast DOM node
         const popout = document.createElement('div');
+        popout.className = `cure-toast cure-toast-${type}`;
         popout.id = toastId;
+        popout.dataset.rtype = rType;
         popout.dataset.type = type;
-
-        // Inject Keyframes
-        if (!root.getElementById('cure-pulse-style-final')) {
-            const style = document.createElement('style');
-            style.id = 'cure-pulse-style-final';
-            style.textContent = `
-                @keyframes cure-pulse-nuclear {
-                    0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); transform: translateX(-50%) scale(1); }
-                    70% { box-shadow: 0 0 0 15px rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1.02); }
-                    100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); transform: translateX(-50%) scale(1); }
-                }
-                @keyframes cure-pulse-soft {
-                    0% { transform: translateX(-50%) scale(1); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-                    50% { transform: translateX(-50%) scale(1.01); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-                    100% { transform: translateX(-50%) scale(1); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-                }
-            `;
-            root.appendChild(style);
-        }
-
-        let bgColor = '#007AFF'; 
-        let animation = 'none';
-
-        if (type === 'warning' || type === 'error') {
-            bgColor = '#FF3B30';
-            animation = 'cure-pulse-nuclear 2s infinite';
-        } else if (type === 'reminder') {
-            bgColor = '#1D1D1F';
-            animation = 'cure-pulse-soft 3s infinite';
-        }
-
-        const bottomOffset = this.isIframe ? '15px' : '35px';
-        const padding = this.isIframe ? '6px 12px' : '10px 20px';
-        const fontSize = this.isIframe ? '11px' : '14px';
-        const gap = this.isIframe ? '6px' : '12px';
-
-        popout.style.cssText = `
-            position: fixed;
-            bottom: ${bottomOffset};
-            left: 50%;
-            transform: translateX(-50%);
-            background: ${bgColor};
-            color: white;
-            padding: ${padding};
-            border-radius: 50px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            z-index: 2147483647;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: ${fontSize};
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: ${gap};
-            opacity: 0; 
-            transition: opacity 0.3s ease, transform 0.3s ease, bottom 0.3s ease;
-            white-space: nowrap;
-            pointer-events: auto;
-            animation: ${animation};
-        `;
 
         const msgSpan = document.createElement('span');
         msgSpan.textContent = msg;
@@ -2661,51 +2598,60 @@ class CureVault {
 
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '✕';
-        const closeSize = this.isIframe ? '16px' : '20px';
-        const closeFontSize = this.isIframe ? '10px' : '12px';
-        closeBtn.style.cssText = `background:rgba(255,255,255,0.2); border:none; width:${closeSize}; height:${closeSize}; border-radius:50%; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:${closeFontSize}; flex-shrink:0;`;
+        closeBtn.className = 'cure-toast-close';
         
         closeBtn.onclick = () => {
-            popout.style.opacity = '0';
-            setTimeout(() => { 
-                if (popout.parentElement) popout.remove(); 
-                this.repositionToasts();
-            }, 300);
-            
-            if (type === 'reminder') {
-                const rType = options.rType || 'time';
-                const isGlobal = (rType === 'browser');
-                this._dismissedToasts[rType] = Date.now();
-                sessionStorage.removeItem('cure_reminder_active');
+             // Immediate local state cleanup (don't wait for broadcast round-trip)
+             this._dismissedToasts[rType] = Date.now();
+             this._activeReminders.delete(rType);
 
-                this.safeSendMessage({
-                    action: 'broadcastReminderState',
-                    hostname: isGlobal ? 'global' : window.location.hostname,
-                    show: false,
-                    type: rType,
-                    reminderStyle: 'toast',
-                    initiatorInstanceId: this.instanceId
-                });
-            }
+             popout.classList.add('removing');
+             setTimeout(() => { 
+                  if (popout.parentElement) popout.remove(); 
+             }, 300);
+             
+             if (type === 'reminder') {
+                 // Tell background to un-persist the reminder
+                 const isGlobal = (rType === 'browser');
+                 sessionStorage.removeItem('cure_reminder_active');
+ 
+                 this.safeSendMessage({
+                     action: 'broadcastReminderState',
+                     hostname: isGlobal ? 'global' : window.location.hostname,
+                     show: false,
+                     type: rType,
+                     reminderStyle: 'toast',
+                     initiatorInstanceId: this.instanceId
+                 });
+             }
         };
         popout.appendChild(closeBtn);
 
-        root.appendChild(popout);
-        setTimeout(() => { 
-            popout.style.opacity = '1'; 
-            this.repositionToasts();
-        }, 50);
+        // Prepend/Append is replaced by a deterministic sort to maintain hierarchy
+        // Hierarchy: Browser (bot) > Time (mid) > Launch (top)
+        const priority = { 'browser': 0, 'time': 1, 'launch': 2, 'default': 3 };
+        
+        container.appendChild(popout);
+        
+        // Sort children by priority
+        const children = Array.from(container.children);
+        children.sort((a, b) => {
+            const pA = priority[a.dataset.rtype] ?? 99;
+            const pB = priority[b.dataset.rtype] ?? 99;
+            return pA - pB;
+        });
+        
+        // Re-append in order (this updates DOM order without destroying elements)
+        children.forEach(child => container.appendChild(child));
 
-        if (options.persist !== true) {
-            setTimeout(() => {
-                if (popout.parentElement) {
-                    popout.style.opacity = '0';
-                    setTimeout(() => { 
-                        if (popout.parentElement) popout.remove(); 
-                        this.repositionToasts();
-                    }, 300);
-                }
-            }, options.duration || TIMERS.TOAST_DURATION_MS);
+        // Auto-kill
+        if (options.persist !== true && type !== 'reminder') {
+             setTimeout(() => {
+                  if (popout.parentElement) {
+                       popout.classList.add('removing');
+                       setTimeout(() => { if (popout.parentElement) popout.remove(); }, 300);
+                  }
+             }, options.duration || 5000);
         }
     }
 
@@ -2794,10 +2740,6 @@ class CureVault {
         if (this.shadowRoot) {
             const o = this.shadowRoot.getElementById(this.overlayId);
             if (o) o.remove();
-
-            // FIX 186: Also remove the toast notification if it exists!
-            const toast = this.shadowRoot.getElementById('cure-popout-notification');
-            if (toast) toast.remove();
 
             // IMMEDIATELY restore pill if we are no longer blocking
             const settings = this.settings || {};
@@ -3183,8 +3125,7 @@ class CureVault {
         this.removePill(); // Aggressive safety
         MediaController.startEnforcement();
 
-        // Check for toasts on cold start/refresh
-        this.processPendingToasts?.();
+
 
         const root = this.ensureShadow();
         if (!root) return;
@@ -3291,13 +3232,17 @@ class CureVault {
             // Build toast message based on type
             let toastMsg = '';
             if (type === 'browser') {
-                toastMsg = `⌛ Browser Screen Time: ${value}m spent`;
+                toastMsg = `🖥️ Daily Screen Time: ${value}m spent`;
             } else if (type === 'launch') {
                 toastMsg = `🚀 Visit Limit: ${value} visits`;
             } else {
                 toastMsg = `⏰ ${this.getSiteName()} Activity: ${value}m spent`;
             }
-            this.showToast(toastMsg, 'reminder', { reminderType: type, targetHostname: targetHostname || window.location.hostname });
+            this.showToast(toastMsg, 'reminder', { 
+                rType: type, 
+                isStacked: true,
+                targetHostname: targetHostname || window.location.hostname 
+            });
             
             // Broadcast to background so other tabs/iframes can restore this toast
             if (!forced) {
@@ -3528,7 +3473,7 @@ class CureVault {
                     // FIX 83/89: Only clear the toast guard on new entry. 
                     // Global flag is now set in the protocol screens (renderTypingLock)
                     if (this.isContextValid()) {
-                        this._lastResetToastShown = false;
+
                     }
                     
                     if (this.isIframe) {
