@@ -544,7 +544,7 @@
               <div class="sub-config" id="config-trigger-session">
                 <div class="sentence-row">
                   <span>Limit to</span>
-                  <input type="number" id="hardlock-input" class="config-number-input" value="30" min="0" />
+                  <input type="number" id="hardlock-input" class="config-number-input" value="15" min="0" />
                   <select id="hardlock-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
@@ -1063,7 +1063,7 @@
                     <option value="repeating">Remind me for every</option>
                     <option value="once">Remind me once after</option>
                   </select>
-                  <input type="number" id="reminder-input" class="config-number-input" value="30" min="0" />
+                  <input type="number" id="reminder-input" class="config-number-input" value="10" min="0" />
                   <select id="reminder-unit" class="unit-selector">
                     <option value="min">minutes</option>
                     <option value="hr">hours</option>
@@ -1072,7 +1072,7 @@
                   <select id="reminder-interval-window" class="unit-selector window-selector">
                     <option value="0">visit</option>
                     <option value="3600">hour</option>
-                    <option value="86400">day</option>
+                    <option value="86400" selected>day</option>
                   </select>
                 </div>
               </div>

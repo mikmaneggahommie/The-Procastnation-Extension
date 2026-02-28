@@ -615,9 +615,10 @@ const DEFAULT_SETTINGS = {
     hardLockDuration: 30, // Minutes
     unlockReward: 5, // Minutes
     unlockRewardType: 'time', // or 'session'
-    reminderInterval: 30, // Minutes
+    reminderInterval: 10, // Stricter default: 10 Minutes
     reminderIntervalEnabled: true,
     reminderIntervalType: 'repeating',
+    reminderIntervalWindow: '86400', // Default to 'per day' instead of 'per visit'
     reminderBrowserType: 'repeating', 
     typingDifficulty: 50, // Characters (Legacy)
     reminderStyle: 'overlay', // Changed to overlay by default
@@ -631,7 +632,7 @@ const DEFAULT_SETTINGS = {
         godMode: false
     },
     hardLockTriggers: {
-        sessionLimit: { enabled: true, value: 30, windowSeconds: 86400 },
+        sessionLimit: { enabled: true, value: 15, windowSeconds: 86400 },
         browserLimit: { enabled: false, value: 480, windowSeconds: 86400 },
         launchLimit: { enabled: false, value: 3, windowSeconds: 3600 }
     },
